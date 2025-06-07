@@ -7,6 +7,9 @@ use crate::state::{AppState, DragState, FileOperation, SortColumn};
 use crate::utils::setup_japanese_fonts;
 use crate::archive::{ArchiveHandler, ArchiveType};
 
+
+
+
 pub struct FileVisorApp {
     pub state: AppState,
     pub file_system: Arc<Mutex<FileSystem>>,
@@ -84,44 +87,61 @@ impl FileVisorApp {
                 return Err(format!("ディレクトリではありません: {}", path.display()));
             }
 
-            // 標準ライブラリを使用してより安全にディレクトリを読み込み
+            // 高速なディレクトリ読み込み（直接実装）
+            const MAX_ENTRIES: usize = 1000;
+            
             match std::fs::read_dir(path) {
                 Ok(entries) => {
                     let mut file_entries = Vec::new();
                     
-                    for entry_result in entries {
-                        match entry_result {
-                            Ok(entry) => {
-                                let path = entry.path();
-                                let name = entry.file_name().to_string_lossy().to_string();
-                                
-                                if let Ok(metadata) = entry.metadata() {
-                                    let file_entry = FileEntry {
-                                        name,
-                                        path: path.clone(),
-                                        size: metadata.len(),
-                                        is_dir: metadata.is_dir(),
-                                        created: metadata.created()
-                                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                                            .into(),
-                                        modified: metadata.modified()
-                                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
-                                            .into(),
-                                        extension: path.extension()
-                                            .and_then(|ext| ext.to_str())
-                                            .map(|s| s.to_string()),
-                                    };
-                                    
-                                    // 隠しファイルのフィルタリング
-                                    if self.state.show_hidden || !file_entry.name.starts_with('.') {
-                                        file_entries.push(file_entry);
-                                    }
-                                }
-                            }
-                            Err(e) => {
-                                tracing::warn!("エントリ読み込みエラー: {:?}", e);
-                                continue;
-                            }
+                    // 親ディレクトリエントリを追加
+                    if path.parent().is_some() {
+                        file_entries.push(FileEntry {
+                            name: "..".to_string(),
+                            path: path.to_path_buf(),
+                            size: 0,
+                            is_dir: true,
+                            created: chrono::Local::now(),
+                            modified: chrono::Local::now(),
+                            extension: None,
+                        });
+                    }
+                    
+                    // エントリを効率的に処理
+                    let dir_entries: Vec<_> = entries
+                        .filter_map(|entry| entry.ok())
+                        .take(MAX_ENTRIES)
+                        .filter(|entry| {
+                            let file_name = entry.file_name();
+                            let name = file_name.to_string_lossy();
+                            self.state.show_hidden || !name.starts_with('.')
+                        })
+                        .collect();
+                    
+                    for entry in dir_entries {
+                        let path = entry.path();
+                        let name = entry.file_name().to_string_lossy().to_string();
+                        
+                        if let Ok(metadata) = entry.metadata() {
+                            let size = if metadata.is_file() { metadata.len() } else { 0 };
+                            let created = metadata.created()
+                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                                .into();
+                            let modified = metadata.modified()
+                                .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                                .into();
+                            
+                            file_entries.push(FileEntry {
+                                name,
+                                path: path.clone(),
+                                size,
+                                is_dir: metadata.is_dir(),
+                                created,
+                                modified,
+                                extension: path.extension()
+                                    .and_then(|ext| ext.to_str())
+                                    .map(|s| s.to_string()),
+                            });
                         }
                     }
 

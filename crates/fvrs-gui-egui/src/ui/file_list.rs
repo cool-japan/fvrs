@@ -1,8 +1,8 @@
 use std::path::Path;
-use egui::{Color32, Layout, Align};
+use egui::{Color32, Layout, Align, Stroke};
 use egui_extras::{TableBuilder, Column};
 use fvrs_core::core::FileEntry;
-use crate::state::{ViewMode, SortColumn};
+use crate::state::{ViewMode, SortColumn, ActivePane};
 use crate::utils::{format_file_size, format_time};
 
 pub struct FileListUI;
@@ -21,18 +21,37 @@ impl FileListUI {
         directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
         file_open_callback: &mut dyn FnMut(std::path::PathBuf),
+        active_pane: &ActivePane,
+        pane_activate_callback: &mut dyn FnMut(),
     ) {
-        match view_mode {
-            ViewMode::Details => Self::show_details_view(
-                ui, entries, current_path, selected_items, last_selected_index,
-                sort_column, sort_ascending, directory_cache, navigate_callback, file_open_callback
-            ),
-            ViewMode::List => Self::show_list_view(
-                ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
-            ),
-            ViewMode::Grid => Self::show_grid_view(
-                ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
-            ),
+        let is_active = *active_pane == ActivePane::MainList;
+        
+        // ペイン全体にフレームを適用してアクティブ状態を視覚化
+        let frame = egui::Frame::default()
+            .stroke(if is_active {
+                Stroke::new(2.0, Color32::from_rgb(0, 120, 215)) // 青い枠
+            } else {
+                Stroke::new(1.0, Color32::GRAY) // グレーの枠
+            });
+            
+        let response = frame.show(ui, |ui| {
+            match view_mode {
+                ViewMode::Details => Self::show_details_view(
+                    ui, entries, current_path, selected_items, last_selected_index,
+                    sort_column, sort_ascending, directory_cache, navigate_callback, file_open_callback
+                ),
+                ViewMode::List => Self::show_list_view(
+                    ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
+                ),
+                ViewMode::Grid => Self::show_grid_view(
+                    ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
+                ),
+            }
+        });
+        
+        // フレームがクリックされたらペインをアクティブ化
+        if response.response.clicked() {
+            pane_activate_callback();
         }
     }
 
@@ -129,9 +148,21 @@ impl FileListUI {
                     });
 
                     row.col(|ui| {
-                        let name_response = ui.selectable_label(is_selected, &entry.name);
+                        // 「..」エントリの特別な表示
+                        let display_name = if entry.name == ".." {
+                            "📁 上へ".to_string()
+                        } else {
+                            entry.name.clone()
+                        };
+                        
+                        let name_response = ui.selectable_label(is_selected, display_name);
                         if name_response.double_clicked() {
-                            if entry.is_dir {
+                            if entry.name == ".." {
+                                // 親ディレクトリに移動
+                                if let Some(parent) = current_path.parent() {
+                                    navigate_callback(parent.to_path_buf());
+                                }
+                            } else if entry.is_dir {
                                 navigate_callback(entry_path.clone());
                             } else {
                                 // ファイルを閲覧モードで開く

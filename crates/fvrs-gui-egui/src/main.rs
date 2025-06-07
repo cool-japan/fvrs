@@ -9,8 +9,8 @@ use std::path::PathBuf;
 use fvrs_core::core::FileEntry;
 
 use app::FileVisorApp;
-use state::{ViewMode, SortColumn};
-use ui::{FileListUI, DialogsUI, ShortcutHandler, FileViewerUI, FileInfoDialog};
+use state::{ViewMode, SortColumn, ActivePane};
+use ui::{FileListUI, DialogsUI, ShortcutHandler, FileViewerUI, FileInfoDialog, ExplorerTreeUI};
 
 impl eframe::App for FileVisorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -19,6 +19,9 @@ impl eframe::App for FileVisorApp {
 
         // キーボードショートカット
         ShortcutHandler::handle_shortcuts(self, ctx);
+        
+        // エクスプローラーツリーのナビゲーション
+        ExplorerTreeUI::handle_tree_navigation(self, ctx);
 
         // メニューバー
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -297,53 +300,17 @@ impl eframe::App for FileVisorApp {
             });
         });
 
-        // サイドパネル（フォルダーツリー）
+        // サイドパネル（エクスプローラーツリー）
         egui::SidePanel::left("folder_tree")
             .default_width(self.state.sidebar_width)
             .resizable(true)
             .show(ctx, |ui| {
-                ui.heading("フォルダー");
-                ui.separator();
+                let response = ExplorerTreeUI::show_explorer_tree(ui, self, ctx);
                 
-                egui::ScrollArea::vertical().show(ui, |ui| {
-                    // システムドライブ一覧
-                    for drive in ["C:", "D:", "E:", "F:"].iter() {
-                        let drive_path = PathBuf::from(format!("{}\\", drive));
-                        if drive_path.exists() {
-                            if ui.selectable_label(
-                                self.state.current_path.starts_with(&drive_path),
-                                format!("💾 {}", drive)
-                            ).clicked() {
-                                self.navigate_to(drive_path);
-                            }
-                        }
-                    }
-                    
-                    ui.separator();
-                    
-                    // 現在パスのフォルダー階層
-                    let mut current = self.state.current_path.clone();
-                    let mut parts = Vec::new();
-                    
-                    while let Some(parent) = current.parent() {
-                        if let Some(name) = current.file_name() {
-                            parts.push((current.clone(), name.to_string_lossy().to_string()));
-                        }
-                        current = parent.to_path_buf();
-                    }
-                    
-                    parts.reverse();
-                    
-                    for (path, name) in parts {
-                        let indent = path.components().count() as f32 * 10.0;
-                        ui.horizontal(|ui| {
-                            ui.add_space(indent);
-                            if ui.selectable_label(path == self.state.current_path, format!("📁 {}", name)).clicked() {
-                                self.navigate_to(path);
-                            }
-                        });
-                    }
-                });
+                // サイドペインクリック時にアクティブ化
+                if response.clicked() {
+                    self.state.active_pane = ActivePane::LeftSidebar;
+                }
             });
 
         // ファイル閲覧・編集パネル（右側）
@@ -359,12 +326,16 @@ impl eframe::App for FileVisorApp {
 
         // メイン表示エリア（ファイルリスト）
         egui::CentralPanel::default().show(ctx, |ui| {
-            // 借用チェッカー対応：必要な値を事前にコピー
-            let current_path = self.state.current_path.clone();
+            // 表示するディレクトリを決定（左ペインの選択があればそれを使用、なければ現在のパス）
+            let display_path = self.state.sidebar_selected_item
+                .as_ref()
+                .unwrap_or(&self.state.current_path)
+                .clone();
+            
             let search_query = self.state.search_query.clone();
             
             // entriesをクローンして所有権を取得し、借用の問題を回避
-            let entries = match self.load_directory(&current_path) {
+            let entries = match self.load_directory(&display_path) {
                 Ok(entries) => entries.clone(),
                 Err(error_msg) => {
                     ui.vertical_centered(|ui| {
@@ -375,7 +346,7 @@ impl eframe::App for FileVisorApp {
                         
                         ui.horizontal(|ui| {
                             if ui.button("再試行").clicked() {
-                                self.directory_cache.remove(&current_path);
+                                self.directory_cache.remove(&display_path);
                             }
                             if ui.button("ホームに戻る").clicked() {
                                 if let Ok(home_dir) = std::env::home_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")) {
@@ -394,7 +365,35 @@ impl eframe::App for FileVisorApp {
                 }
             };
             
-            let filtered_entries: Vec<&FileEntry> = entries
+            // 親ディレクトリエントリを作成（ルートでない場合）
+            let mut all_entries = Vec::new();
+            if display_path.parent().is_some() {
+                let parent_entry = FileEntry {
+                    name: "..".to_string(),
+                    path: display_path.parent().unwrap().to_path_buf(),
+                    size: 0,
+                    is_dir: true,
+                    created: chrono::DateTime::from(std::time::SystemTime::UNIX_EPOCH),
+                    modified: chrono::DateTime::from(std::time::SystemTime::UNIX_EPOCH),
+                    extension: None,
+                };
+                all_entries.push(parent_entry);
+            }
+            
+            // エントリをソート：フォルダーを先に、その後ファイル
+            let mut sorted_entries = entries.clone();
+            sorted_entries.sort_by(|a, b| {
+                match (a.is_dir, b.is_dir) {
+                    (true, false) => std::cmp::Ordering::Less,   // フォルダーが先
+                    (false, true) => std::cmp::Ordering::Greater, // ファイルが後
+                    _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()), // 同じ種類なら名前順
+                }
+            });
+            
+            // ソートされたエントリを追加
+            all_entries.extend(sorted_entries);
+            
+            let filtered_entries: Vec<&FileEntry> = all_entries
                 .iter()
                 .filter(|entry| {
                     search_query.is_empty() ||
@@ -404,26 +403,33 @@ impl eframe::App for FileVisorApp {
 
             // 借用チェッカー対応：必要な値をコピー
             let view_mode = self.state.view_mode.clone();
-            let current_path_for_ui = self.state.current_path.clone();
+            let display_path_for_ui = display_path.clone();
             
             // ナビゲーション用の一時的な変数
             let mut navigation_target: Option<PathBuf> = None;
             let mut file_open_target: Option<PathBuf> = None;
+            let mut activate_main_pane = false;
+            let mut update_sidebar_selection: Option<PathBuf> = None;
             
             {
                 let mut navigate_callback = |path: PathBuf| {
-                    navigation_target = Some(path);
+                    navigation_target = Some(path.clone());
+                    update_sidebar_selection = Some(path);
                 };
                 
                 let mut file_open_callback = |path: PathBuf| {
                     file_open_target = Some(path);
+                };
+                
+                let mut pane_activate_callback = || {
+                    activate_main_pane = true;
                 };
 
                 FileListUI::show_file_list(
                     ui,
                     &filtered_entries,
                     view_mode,
-                    &current_path_for_ui,
+                    &display_path_for_ui,
                     &mut self.state.selected_items,
                     &mut self.state.last_selected_index,
                     &mut self.state.sort_column,
@@ -431,7 +437,19 @@ impl eframe::App for FileVisorApp {
                     &mut self.directory_cache,
                     &mut navigate_callback,
                     &mut file_open_callback,
+                    &self.state.active_pane,
+                    &mut pane_activate_callback,
                 );
+            }
+            
+            // サイドバー選択の更新
+            if let Some(path) = update_sidebar_selection {
+                self.state.sidebar_selected_item = Some(path);
+            }
+            
+            // ペインアクティブ化
+            if activate_main_pane {
+                self.state.active_pane = ActivePane::MainList;
             }
             
             // ナビゲーションの実行

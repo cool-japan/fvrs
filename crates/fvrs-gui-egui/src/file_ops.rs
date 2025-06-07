@@ -1,119 +1,37 @@
-use native_windows_gui as nwg;
-use std::path::{Path, PathBuf};
 use std::fs;
 use std::io;
+use std::path::{Path, PathBuf};
 use std::time::SystemTime;
-use thiserror::Error;
-use crate::Result;
-use fvrs_core::SortBy;
 
-/// File operation error type
-#[derive(Error, Debug)]
+/// File operation error types
+#[derive(Debug)]
 pub enum FileOpError {
-    #[error("IO error: {0}")]
-    Io(#[from] io::Error),
-    
-    #[error("Source file not found: {0}")]
+    Io(io::Error),
     SourceNotFound(PathBuf),
-    
-    #[error("Destination already exists: {0}")]
     DestinationExists(PathBuf),
-    
-    #[error("Operation cancelled by user")]
     Cancelled,
 }
 
-/// Result type for file operations
-type FileOpResult<T> = std::result::Result<T, FileOpError>;
-
-/// Copy a file or directory
-pub fn copy_file(source: &Path, dest: &Path) -> FileOpResult<()> {
-    if !source.exists() {
-        return Err(FileOpError::SourceNotFound(source.to_path_buf()));
+impl From<io::Error> for FileOpError {
+    fn from(err: io::Error) -> Self {
+        FileOpError::Io(err)
     }
-    
-    if dest.exists() {
-        return Err(FileOpError::DestinationExists(dest.to_path_buf()));
-    }
-    
-    if source.is_file() {
-        fs::copy(source, dest)?;
-    } else if source.is_dir() {
-        copy_dir(source, dest)?;
-    }
-    
-    Ok(())
 }
 
-/// Copy a directory recursively
-fn copy_dir(source: &Path, dest: &Path) -> FileOpResult<()> {
-    fs::create_dir(dest)?;
-    
-    for entry in fs::read_dir(source)? {
-        let entry = entry?;
-        let path = entry.path();
-        let dest_path = dest.join(path.file_name().unwrap());
-        
-        if path.is_file() {
-            fs::copy(&path, &dest_path)?;
-        } else if path.is_dir() {
-            copy_dir(&path, &dest_path)?;
+impl std::fmt::Display for FileOpError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            FileOpError::Io(e) => write!(f, "IO error: {}", e),
+            FileOpError::SourceNotFound(path) => write!(f, "Source file not found: {}", path.display()),
+            FileOpError::DestinationExists(path) => write!(f, "Destination already exists: {}", path.display()),
+            FileOpError::Cancelled => write!(f, "Operation cancelled by user"),
         }
     }
-    
-    Ok(())
 }
 
-/// Move a file or directory
-pub fn move_file(source: &Path, dest: &Path) -> FileOpResult<()> {
-    if !source.exists() {
-        return Err(FileOpError::SourceNotFound(source.to_path_buf()));
-    }
-    
-    if dest.exists() {
-        return Err(FileOpError::DestinationExists(dest.to_path_buf()));
-    }
-    
-    fs::rename(source, dest)?;
-    Ok(())
-}
+impl std::error::Error for FileOpError {}
 
-/// Delete a file or directory
-pub fn delete_file(path: &Path) -> FileOpResult<()> {
-    if !path.exists() {
-        return Err(FileOpError::SourceNotFound(path.to_path_buf()));
-    }
-    
-    if path.is_file() {
-        fs::remove_file(path)?;
-    } else if path.is_dir() {
-        fs::remove_dir_all(path)?;
-    }
-    
-    Ok(())
-}
-
-/// Show a file operation confirmation dialog
-pub fn show_confirm_dialog(title: &str, message: &str) -> bool {
-    let mut dialog = nwg::ModalInfo::default();
-    dialog.title(title);
-    dialog.message(message);
-    dialog.buttons(nwg::MessageButtons::YesNo);
-    dialog.icon(nwg::MessageIcon::Question);
-    
-    nwg::modal_info(&dialog) == nwg::MessageResponse::Yes
-}
-
-/// Show a file operation error dialog
-pub fn show_error_dialog(title: &str, message: &str) {
-    let mut dialog = nwg::ModalInfo::default();
-    dialog.title(title);
-    dialog.message(message);
-    dialog.buttons(nwg::MessageButtons::Ok);
-    dialog.icon(nwg::MessageIcon::Error);
-    
-    nwg::modal_info(&dialog);
-}
+type FileOpResult<T> = std::result::Result<T, FileOpError>;
 
 /// File entry information
 #[derive(Debug, Clone)]
@@ -143,85 +61,78 @@ impl FileEntry {
     }
 }
 
-/// Get directory entries sorted by the specified criteria
-pub fn get_sorted_entries(path: &Path, sort_by: SortBy) -> FileOpResult<Vec<FileEntry>> {
+/// 高速なファイル一覧取得（表示数制限付き）
+pub fn get_entries_fast(path: &Path, show_hidden: bool) -> FileOpResult<Vec<FileEntry>> {
+    const MAX_ENTRIES: usize = 1000; // 最大表示数を制限してパフォーマンス向上
+    
     let mut entries = Vec::new();
     
-    for entry in fs::read_dir(path)? {
-        let entry = entry?;
+    // 親ディレクトリエントリを追加
+    if path.parent().is_some() {
+        entries.push(FileEntry {
+            path: path.to_path_buf(),
+            name: "..".to_string(),
+            is_dir: true,
+            size: 0,
+            modified: SystemTime::now(),
+        });
+    }
+    
+    // ディレクトリエントリを効率的に読み込み
+    let dir_entries: Vec<_> = fs::read_dir(path)?
+        .filter_map(|entry| entry.ok())
+        .take(MAX_ENTRIES)
+        .collect();
+    
+    // 隠しファイル/フォルダのフィルタリング
+    let filtered_entries: Vec<_> = dir_entries
+        .into_iter()
+        .filter(|entry| {
+            let file_name = entry.file_name();
+            let name = file_name.to_string_lossy();
+            show_hidden || !name.starts_with('.')
+        })
+        .collect();
+    
+    // 並列処理的にメタデータ取得（実際の並列処理はせずに効率化）
+    for entry in filtered_entries {
         let path = entry.path();
-        if let Ok(file_entry) = FileEntry::new(path) {
-            entries.push(file_entry);
+        let name = entry.file_name().to_string_lossy().to_string();
+        
+        // 軽量なメタデータ取得
+        if let Ok(metadata) = entry.metadata() {
+            let size = if metadata.is_file() { metadata.len() } else { 0 };
+            let modified = metadata.modified().unwrap_or(SystemTime::now());
+            
+            entries.push(FileEntry {
+                path,
+                name,
+                is_dir: metadata.is_dir(),
+                size,
+                modified,
+            });
         }
     }
     
-    match sort_by {
-        SortBy::Name => {
-            entries.sort_by(|a, b| a.name.cmp(&b.name));
+    // 効率的なソート：ディレクトリ優先、その後名前順
+    entries.sort_unstable_by(|a, b| {
+        // .. エントリは常に最初
+        if a.name == ".." {
+            return std::cmp::Ordering::Less;
         }
-        SortBy::Size => {
-            entries.sort_by(|a, b| b.size.cmp(&a.size));
+        if b.name == ".." {
+            return std::cmp::Ordering::Greater;
         }
-        SortBy::Modified => {
-            entries.sort_by(|a, b| b.modified.cmp(&a.modified));
+        
+        // ディレクトリを先に
+        match (a.is_dir, b.is_dir) {
+            (true, false) => std::cmp::Ordering::Less,
+            (false, true) => std::cmp::Ordering::Greater,
+            _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()),
         }
-        SortBy::Created => {
-            // TODO: Implement created time sorting
-            entries.sort_by(|a, b| a.name.cmp(&b.name));
-        }
-    }
+    });
     
     Ok(entries)
-}
-
-/// Drag and drop operation type
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum DragOp {
-    Copy,
-    Move,
-}
-
-/// Handle a dropped file
-pub fn handle_drop(source: &Path, dest: &Path, op: DragOp) -> FileOpResult<()> {
-    if !source.exists() {
-        return Err(FileOpError::SourceNotFound(source.to_path_buf()));
-    }
-    
-    if !dest.exists() {
-        return Err(FileOpError::DestinationExists(dest.to_path_buf()));
-    }
-    
-    let dest_path = if fs::metadata(dest)?.is_dir() {
-        dest.join(source.file_name().ok_or_else(|| {
-            FileOpError::SourceNotFound(source.to_path_buf())
-        })?)
-    } else {
-        dest.to_path_buf()
-    };
-    
-    match op {
-        DragOp::Copy => {
-            if fs::metadata(source)?.is_dir() {
-                copy_dir(source, &dest_path)?;
-            } else {
-                fs::copy(source, &dest_path)?;
-            }
-        }
-        DragOp::Move => {
-            fs::rename(source, &dest_path)?;
-        }
-    }
-    
-    Ok(())
-}
-
-/// Get the default drag operation based on modifier keys
-pub fn get_drag_op(ctrl: bool, shift: bool) -> DragOp {
-    if ctrl {
-        DragOp::Copy
-    } else {
-        DragOp::Move
-    }
 }
 
 /// Format a file size for display
@@ -248,157 +159,4 @@ pub fn format_time(time: SystemTime) -> String {
     } else {
         "Unknown".to_string()
     }
-}
-
-#[derive(Debug, Error)]
-pub enum FileOpsError {
-    #[error("IO error: {0}")]
-    Io(#[from] std::io::Error),
-    
-    #[error("Invalid path: {0}")]
-    InvalidPath(String),
-    
-    #[error("Operation failed: {0}")]
-    OperationFailed(String),
-}
-
-pub type Result<T> = std::result::Result<T, FileOpsError>;
-
-/// Open a file with the default application
-pub fn open_file(path: &Path) -> Result<()> {
-    if !path.exists() {
-        return Err(FileOpsError::InvalidPath(path.display().to_string()));
-    }
-    
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        Command::new("cmd")
-            .args(&["/C", "start", "", path.to_str().unwrap()])
-            .output()?;
-    }
-    
-    #[cfg(target_os = "linux")]
-    {
-        use std::process::Command;
-        Command::new("xdg-open")
-            .arg(path)
-            .output()?;
-    }
-    
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        Command::new("open")
-            .arg(path)
-            .output()?;
-    }
-    
-    Ok(())
-}
-
-/// Open a file with a specific application
-pub fn open_file_with(path: &Path, app: &Path) -> Result<()> {
-    if !path.exists() {
-        return Err(FileOpsError::InvalidPath(path.display().to_string()));
-    }
-    
-    if !app.exists() {
-        return Err(FileOpsError::InvalidPath(app.display().to_string()));
-    }
-    
-    #[cfg(target_os = "windows")]
-    {
-        use std::process::Command;
-        Command::new(app)
-            .arg(path)
-            .output()?;
-    }
-    
-    #[cfg(target_os = "linux")]
-    {
-        use std::process::Command;
-        Command::new(app)
-            .arg(path)
-            .output()?;
-    }
-    
-    #[cfg(target_os = "macos")]
-    {
-        use std::process::Command;
-        Command::new("open")
-            .arg("-a")
-            .arg(app)
-            .arg(path)
-            .output()?;
-    }
-    
-    Ok(())
-}
-
-/// Rename a file
-pub fn rename_file(path: &Path) -> Result<()> {
-    if !path.exists() {
-        return Err(FileOpsError::InvalidPath(path.display().to_string()));
-    }
-    
-    let mut dialog = nwg::InputDialog::default();
-    dialog.title("Rename");
-    dialog.text("Enter new name:");
-    dialog.default_text(path.file_name().unwrap().to_str().unwrap());
-    
-    if dialog.show() {
-        if let Some(new_name) = dialog.text() {
-            let new_path = path.parent().unwrap().join(new_name);
-            if new_path.exists() {
-                return Err(FileOpsError::OperationFailed(format!(
-                    "A file with the name '{}' already exists",
-                    new_name
-                )));
-            }
-            fs::rename(path, new_path)?;
-        }
-    }
-    
-    Ok(())
-}
-
-/// Show file properties
-pub fn show_properties(path: &Path) -> Result<()> {
-    if !path.exists() {
-        return Err(FileOpsError::InvalidPath(path.display().to_string()));
-    }
-    
-    let metadata = fs::metadata(path)?;
-    let mut info = String::new();
-    
-    info.push_str(&format!("Name: {}\n", path.file_name().unwrap().to_str().unwrap()));
-    info.push_str(&format!("Type: {}\n", if metadata.is_dir() { "Folder" } else { "File" }));
-    info.push_str(&format!("Size: {}\n", format_size(metadata.len())));
-    info.push_str(&format!("Created: {}\n", format_time(metadata.created()?)));
-    info.push_str(&format!("Modified: {}\n", format_time(metadata.modified()?)));
-    
-    if metadata.is_file() {
-        info.push_str(&format!("Read-only: {}\n", metadata.permissions().readonly()));
-    }
-    
-    nwg::modal_info_message(&nwg::Window::default(), "Properties", &info);
-    
-    Ok(())
-}
-
-/// Paste files from clipboard
-pub fn paste_files(dest: &Path) -> Result<()> {
-    if !dest.exists() {
-        return Err(FileOpsError::InvalidPath(dest.display().to_string()));
-    }
-    
-    if !dest.is_dir() {
-        return Err(FileOpsError::OperationFailed("Destination must be a directory".to_string()));
-    }
-    
-    // TODO: Implement clipboard operations
-    // This would require platform-specific clipboard APIs
-    
-    Ok(())
 } 

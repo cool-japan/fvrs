@@ -1,4 +1,5 @@
 use crate::app::FileVisorApp;
+use crate::state::ActivePane;
 use egui::{Context, Key};
 
 pub struct ShortcutHandler;
@@ -20,7 +21,7 @@ impl ShortcutHandler {
          }
 
         ctx.input(|i| {
-            // 既存のショートカット
+            // 基本的なショートカット（ペインに関係なく動作）
             if i.key_pressed(Key::F5) {
                 Self::refresh_directory(app);
             }
@@ -32,6 +33,21 @@ impl ShortcutHandler {
             }
             if i.modifiers.alt && i.key_pressed(Key::ArrowRight) {
                 Self::go_forward(app);
+            }
+            
+            // Tab キーでペイン切り替え
+            if i.key_pressed(Key::Tab) && !i.modifiers.any() {
+                Self::switch_pane(app);
+            }
+            
+            // 矢印キーによるナビゲーション（アクティブペインでのみ）
+            if app.state.active_pane == ActivePane::MainList {
+                if i.key_pressed(Key::ArrowUp) {
+                    Self::navigate_list_up(app);
+                }
+                if i.key_pressed(Key::ArrowDown) {
+                    Self::navigate_list_down(app);
+                }
             }
 
             // A～Zのワンタッチキー（修飾キーなしの場合のみ）
@@ -180,6 +196,36 @@ impl ShortcutHandler {
 
     fn go_forward(app: &mut FileVisorApp) {
         app.go_forward();
+    }
+    
+    fn switch_pane(app: &mut FileVisorApp) {
+        app.state.active_pane = match app.state.active_pane {
+            ActivePane::LeftSidebar => ActivePane::MainList,
+            ActivePane::MainList => ActivePane::LeftSidebar,
+        };
+        tracing::info!("ペインを切り替えました: {:?}", app.state.active_pane);
+    }
+    
+    fn navigate_list_up(app: &mut FileVisorApp) {
+        if let Some(current_index) = app.state.last_selected_index {
+            if current_index > 0 {
+                app.state.last_selected_index = Some(current_index - 1);
+                // 実際の選択を更新する処理が必要
+                tracing::info!("リスト上へ移動: {}", current_index - 1);
+            }
+        } else if !app.state.selected_items.is_empty() {
+            app.state.last_selected_index = Some(0);
+        }
+    }
+    
+    fn navigate_list_down(app: &mut FileVisorApp) {
+        if let Some(current_index) = app.state.last_selected_index {
+            app.state.last_selected_index = Some(current_index + 1);
+            // 実際の選択を更新する処理が必要
+            tracing::info!("リスト下へ移動: {}", current_index + 1);
+        } else if app.state.selected_items.is_empty() {
+            app.state.last_selected_index = Some(0);
+        }
     }
 
     // ===== ファイル操作 =====

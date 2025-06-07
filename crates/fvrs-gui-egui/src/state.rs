@@ -4,6 +4,12 @@ use serde::{Deserialize, Serialize};
 
 use crate::archive::{ArchiveEntry, ArchiveType};
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum ActivePane {
+    LeftSidebar,
+    MainList,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub current_path: PathBuf,
@@ -21,6 +27,13 @@ pub struct AppState {
     pub show_delete_dialog: bool,
     pub delete_dialog_items: Vec<PathBuf>,
     pub show_shortcuts_dialog: bool,
+    
+    // ペイン管理
+    pub active_pane: ActivePane,
+    pub sidebar_selected_item: Option<PathBuf>,
+    pub sidebar_last_selected_index: Option<usize>,
+    pub expanded_folders: std::collections::HashSet<PathBuf>,
+    
     // ファイル閲覧・編集機能
     pub show_file_viewer: bool,
     pub viewed_file_path: Option<PathBuf>,
@@ -126,6 +139,13 @@ impl Default for AppState {
             show_delete_dialog: false,
             delete_dialog_items: Vec::new(),
             show_shortcuts_dialog: false,
+            
+            // ペイン管理
+            active_pane: ActivePane::MainList,
+            sidebar_selected_item: None,
+            sidebar_last_selected_index: None,
+            expanded_folders: std::collections::HashSet::new(),
+            
             // ファイル閲覧・編集機能
             show_file_viewer: false,
             viewed_file_path: None,
