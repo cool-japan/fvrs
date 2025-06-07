@@ -187,6 +187,7 @@ impl FileVisorApp {
             self.state.current_path = path;
             self.address_bar_text = self.state.current_path.to_string_lossy().to_string();
             self.state.selected_items.clear();
+            self.state.last_selected_index = None;
         }
     }
 
@@ -197,6 +198,7 @@ impl FileVisorApp {
                 self.state.current_path = path.clone();
                 self.address_bar_text = self.state.current_path.to_string_lossy().to_string();
                 self.state.selected_items.clear();
+                self.state.last_selected_index = None;
             }
         }
     }
@@ -208,6 +210,7 @@ impl FileVisorApp {
                 self.state.current_path = path.clone();
                 self.address_bar_text = self.state.current_path.to_string_lossy().to_string();
                 self.state.selected_items.clear();
+                self.state.last_selected_index = None;
             }
         }
     }
@@ -252,6 +255,7 @@ impl FileVisorApp {
         // 状態をクリア
         self.directory_cache.remove(&self.state.current_path);
         self.state.selected_items.clear();
+        self.state.last_selected_index = None;
         self.state.delete_dialog_items.clear();
         self.state.show_delete_dialog = false;
     }

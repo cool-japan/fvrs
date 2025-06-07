@@ -15,6 +15,7 @@ impl FileListUI {
         view_mode: ViewMode,
         current_path: &Path,
         selected_items: &mut Vec<std::path::PathBuf>,
+        last_selected_index: &mut Option<usize>,
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
         directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
@@ -22,14 +23,14 @@ impl FileListUI {
     ) {
         match view_mode {
             ViewMode::Details => Self::show_details_view(
-                ui, entries, current_path, selected_items, 
+                ui, entries, current_path, selected_items, last_selected_index,
                 sort_column, sort_ascending, directory_cache, navigate_callback
             ),
             ViewMode::List => Self::show_list_view(
-                ui, entries, current_path, selected_items, navigate_callback
+                ui, entries, current_path, selected_items, last_selected_index, navigate_callback
             ),
             ViewMode::Grid => Self::show_grid_view(
-                ui, entries, current_path, selected_items, navigate_callback
+                ui, entries, current_path, selected_items, last_selected_index, navigate_callback
             ),
         }
     }
@@ -40,6 +41,7 @@ impl FileListUI {
         entries: &[&FileEntry],
         current_path: &Path,
         selected_items: &mut Vec<std::path::PathBuf>,
+        last_selected_index: &mut Option<usize>,
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
         directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
@@ -137,17 +139,41 @@ impl FileListUI {
                             }
                         }
                         if name_response.clicked() {
-                            if ui.input(|i| i.modifiers.ctrl) {
-                                // Ctrl+クリック: 複数選択
+                            let modifiers = ui.input(|i| i.modifiers.clone());
+                            
+                            if modifiers.shift {
+                                // Shift+クリック: 範囲選択
+                                if let Some(last_idx) = *last_selected_index {
+                                    let start_idx = last_idx.min(row_index);
+                                    let end_idx = last_idx.max(row_index);
+                                    
+                                    selected_items.clear();
+                                    for idx in start_idx..=end_idx {
+                                        if idx < entries.len() {
+                                            let target_entry = entries[idx];
+                                            let target_path = current_path.join(&target_entry.name);
+                                            selected_items.push(target_path);
+                                        }
+                                    }
+                                } else {
+                                    // 最初の選択
+                                    selected_items.clear();
+                                    selected_items.push(entry_path.clone());
+                                    *last_selected_index = Some(row_index);
+                                }
+                            } else if modifiers.ctrl {
+                                // Ctrl+クリック: 個別選択
                                 if is_selected {
                                     selected_items.retain(|p| p != &entry_path);
                                 } else {
                                     selected_items.push(entry_path.clone());
                                 }
+                                *last_selected_index = Some(row_index);
                             } else {
                                 // 通常クリック: 単一選択
                                 selected_items.clear();
                                 selected_items.push(entry_path.clone());
+                                *last_selected_index = Some(row_index);
                             }
                         }
                     });
@@ -185,10 +211,11 @@ impl FileListUI {
         entries: &[&FileEntry],
         current_path: &Path,
         selected_items: &mut Vec<std::path::PathBuf>,
+        last_selected_index: &mut Option<usize>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
-            for entry in entries {
+            for (row_index, entry) in entries.iter().enumerate() {
                 let entry_path = current_path.join(&entry.name);
                 let is_selected = selected_items.contains(&entry_path);
 
@@ -208,15 +235,41 @@ impl FileListUI {
                     }
                     
                     if response.clicked() {
-                        if ui.input(|i| i.modifiers.ctrl) {
+                        let modifiers = ui.input(|i| i.modifiers.clone());
+                        
+                        if modifiers.shift {
+                            // Shift+クリック: 範囲選択
+                            if let Some(last_idx) = *last_selected_index {
+                                let start_idx = last_idx.min(row_index);
+                                let end_idx = last_idx.max(row_index);
+                                
+                                selected_items.clear();
+                                for idx in start_idx..=end_idx {
+                                    if idx < entries.len() {
+                                        let target_entry = entries[idx];
+                                        let target_path = current_path.join(&target_entry.name);
+                                        selected_items.push(target_path);
+                                    }
+                                }
+                            } else {
+                                // 最初の選択
+                                selected_items.clear();
+                                selected_items.push(entry_path.clone());
+                                *last_selected_index = Some(row_index);
+                            }
+                        } else if modifiers.ctrl {
+                            // Ctrl+クリック: 個別選択
                             if is_selected {
                                 selected_items.retain(|p| p != &entry_path);
                             } else {
                                 selected_items.push(entry_path.clone());
                             }
+                            *last_selected_index = Some(row_index);
                         } else {
+                            // 通常クリック: 単一選択
                             selected_items.clear();
                             selected_items.push(entry_path.clone());
+                            *last_selected_index = Some(row_index);
                         }
                     }
                 });
@@ -230,6 +283,7 @@ impl FileListUI {
         entries: &[&FileEntry],
         current_path: &Path,
         selected_items: &mut Vec<std::path::PathBuf>,
+        last_selected_index: &mut Option<usize>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
         const ITEM_SIZE: f32 = 80.0;
@@ -239,9 +293,11 @@ impl FileListUI {
             let available_width = ui.available_width();
             let items_per_row = ((available_width + SPACING) / (ITEM_SIZE + SPACING)).max(1.0) as usize;
             
+            let mut current_index = 0;
             for chunk in entries.chunks(items_per_row) {
                 ui.horizontal(|ui| {
-                    for entry in chunk {
+                    for (chunk_idx, entry) in chunk.iter().enumerate() {
+                        let row_index = current_index + chunk_idx;
                         let entry_path = current_path.join(&entry.name);
                         let is_selected = selected_items.contains(&entry_path);
                         
@@ -274,15 +330,41 @@ impl FileListUI {
                                 }
                                 
                                 if icon_response.clicked() || name_response.clicked() {
-                                    if ui.input(|i| i.modifiers.ctrl) {
+                                    let modifiers = ui.input(|i| i.modifiers.clone());
+                                    
+                                    if modifiers.shift {
+                                        // Shift+クリック: 範囲選択
+                                        if let Some(last_idx) = *last_selected_index {
+                                            let start_idx = last_idx.min(row_index);
+                                            let end_idx = last_idx.max(row_index);
+                                            
+                                            selected_items.clear();
+                                            for idx in start_idx..=end_idx {
+                                                if idx < entries.len() {
+                                                    let target_entry = entries[idx];
+                                                    let target_path = current_path.join(&target_entry.name);
+                                                    selected_items.push(target_path);
+                                                }
+                                            }
+                                        } else {
+                                            // 最初の選択
+                                            selected_items.clear();
+                                            selected_items.push(entry_path.clone());
+                                            *last_selected_index = Some(row_index);
+                                        }
+                                    } else if modifiers.ctrl {
+                                        // Ctrl+クリック: 個別選択
                                         if is_selected {
                                             selected_items.retain(|p| p != &entry_path);
                                         } else {
                                             selected_items.push(entry_path.clone());
                                         }
+                                        *last_selected_index = Some(row_index);
                                     } else {
+                                        // 通常クリック: 単一選択
                                         selected_items.clear();
                                         selected_items.push(entry_path.clone());
+                                        *last_selected_index = Some(row_index);
                                     }
                                 }
                             }
@@ -291,6 +373,7 @@ impl FileListUI {
                         ui.add_space(SPACING);
                     }
                 });
+                current_index += chunk.len();
                 ui.add_space(SPACING);
             }
         });

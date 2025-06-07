@@ -12,11 +12,13 @@ pub struct AppState {
     pub sort_column: SortColumn,
     pub sort_ascending: bool,
     pub selected_items: Vec<PathBuf>,
+    pub last_selected_index: Option<usize>,
     pub clipboard: Option<ClipboardOperation>,
     pub show_hidden: bool,
     pub sidebar_width: f32,
     pub show_delete_dialog: bool,
     pub delete_dialog_items: Vec<PathBuf>,
+    pub show_shortcuts_dialog: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,11 +80,13 @@ impl Default for AppState {
             sort_column: SortColumn::Name,
             sort_ascending: true,
             selected_items: Vec::new(),
+            last_selected_index: None,
             clipboard: None,
             show_hidden: false,
             sidebar_width: 250.0,
             show_delete_dialog: false,
             delete_dialog_items: Vec::new(),
+            show_shortcuts_dialog: false,
         }
     }
 } 

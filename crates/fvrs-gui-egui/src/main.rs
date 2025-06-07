@@ -8,7 +8,7 @@ use fvrs_core::core::FileEntry;
 
 use app::FileVisorApp;
 use state::{ViewMode, SortColumn};
-use ui::{FileListUI, DialogsUI};
+use ui::{FileListUI, DialogsUI, ShortcutHandler};
 
 impl eframe::App for FileVisorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -16,23 +16,7 @@ impl eframe::App for FileVisorApp {
         let frame_start = std::time::Instant::now();
 
         // キーボードショートカット
-        ctx.input(|i| {
-            if i.key_pressed(egui::Key::F5) {
-                self.directory_cache.remove(&self.state.current_path);
-            }
-            if i.modifiers.ctrl && i.key_pressed(egui::Key::N) {
-                // 新しいフォルダー
-            }
-            if i.key_pressed(egui::Key::Delete) && !self.state.selected_items.is_empty() {
-                self.show_delete_confirmation();
-            }
-            if i.modifiers.alt && i.key_pressed(egui::Key::ArrowLeft) {
-                self.go_back();
-            }
-            if i.modifiers.alt && i.key_pressed(egui::Key::ArrowRight) {
-                self.go_forward();
-            }
-        });
+        ShortcutHandler::handle_shortcuts(self, ctx);
 
         // メニューバー
         egui::TopBottomPanel::top("menu_bar").show(ctx, |ui| {
@@ -172,7 +156,10 @@ impl eframe::App for FileVisorApp {
                     ui.checkbox(&mut self.state.show_hidden, "隠しファイルを表示");
                     ui.separator();
                     if ui.button("ホットキーメニュー").clicked() { ui.close_menu(); }
-                    if ui.button("ショートカットキー").clicked() { ui.close_menu(); }
+                    if ui.button("ショートカットキー").clicked() { 
+                        self.state.show_shortcuts_dialog = true;
+                        ui.close_menu(); 
+                    }
                     if ui.button("デスクトップをツリー表示").clicked() { ui.close_menu(); }
                 });
 
@@ -187,7 +174,10 @@ impl eframe::App for FileVisorApp {
                     ui.separator();
                     if ui.button("形式を指定してリスト出力").clicked() { ui.close_menu(); }
                     ui.separator();
-                    if ui.button("ショートカットキー").clicked() { ui.close_menu(); }
+                    if ui.button("ショートカットキー").clicked() { 
+                        self.state.show_shortcuts_dialog = true;
+                        ui.close_menu(); 
+                    }
                     if ui.button("ショートカットメニュー").clicked() { ui.close_menu(); }
                     ui.separator();
                     if ui.button("オプション").clicked() { ui.close_menu(); }
@@ -395,6 +385,7 @@ impl eframe::App for FileVisorApp {
                     view_mode,
                     &current_path_for_ui,
                     &mut self.state.selected_items,
+                    &mut self.state.last_selected_index,
                     &mut self.state.sort_column,
                     &mut self.state.sort_ascending,
                     &mut self.directory_cache,
@@ -459,6 +450,9 @@ impl eframe::App for FileVisorApp {
                 &mut cancel_callback,
             );
         }
+
+        // ショートカットキー一覧ダイアログ
+        DialogsUI::show_shortcuts_dialog(ctx, &mut self.state.show_shortcuts_dialog);
         
         // ダイアログアクションの実行
         if delete_requested {
