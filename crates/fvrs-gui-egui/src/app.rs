@@ -5,6 +5,7 @@ use tokio::runtime::Runtime;
 use fvrs_core::core::{FileEntry, FileSystem};
 use crate::state::{AppState, DragState, FileOperation, SortColumn};
 use crate::utils::setup_japanese_fonts;
+use crate::archive::{ArchiveHandler, ArchiveType};
 
 pub struct FileVisorApp {
     pub state: AppState,
@@ -270,5 +271,164 @@ impl FileVisorApp {
             self._undo_stack.push(FileOperation::CreateFolder { path: new_path });
             self.directory_cache.remove(&self.state.current_path);
         }
+    }
+    
+    /// 新規ファイル作成
+    pub fn create_new_file(&mut self, file_name: &str) {
+        let new_file_path = self.state.current_path.join(file_name);
+        
+        // ファイルが既に存在するかチェック
+        if new_file_path.exists() {
+            tracing::error!("ファイルが既に存在します: {:?}", new_file_path);
+            return;
+        }
+        
+        // 標準ライブラリを使用してファイル作成
+        match std::fs::write(&new_file_path, "") {
+            Ok(_) => {
+                tracing::info!("新規ファイルを作成しました: {:?}", new_file_path);
+                // ディレクトリキャッシュを更新
+                self.directory_cache.remove(&self.state.current_path);
+                
+                // 作成したファイルを選択状態にする
+                self.state.selected_items.clear();
+                self.state.selected_items.push(new_file_path.clone());
+                self.state.last_selected_index = None;
+                
+                // ダイアログを閉じる
+                self.state.show_create_file_dialog = false;
+                self.state.new_file_name.clear();
+            }
+            Err(e) => {
+                tracing::error!("ファイル作成エラー: {:?}", e);
+            }
+        }
+    }
+    
+    /// 新規フォルダ作成（ダイアログ経由）
+    pub fn create_new_folder_dialog(&mut self, folder_name: &str) {
+        let new_folder_path = self.state.current_path.join(folder_name);
+        
+        // フォルダが既に存在するかチェック
+        if new_folder_path.exists() {
+            tracing::error!("フォルダが既に存在します: {:?}", new_folder_path);
+            return;
+        }
+        
+        // 標準ライブラリを使用してフォルダ作成
+        match std::fs::create_dir(&new_folder_path) {
+            Ok(_) => {
+                tracing::info!("新規フォルダを作成しました: {:?}", new_folder_path);
+                // ディレクトリキャッシュを更新
+                self.directory_cache.remove(&self.state.current_path);
+                
+                // 作成したフォルダを選択状態にする
+                self.state.selected_items.clear();
+                self.state.selected_items.push(new_folder_path.clone());
+                self.state.last_selected_index = None;
+                
+                // ダイアログを閉じる
+                self.state.show_create_folder_dialog = false;
+                self.state.new_folder_name.clear();
+            }
+            Err(e) => {
+                tracing::error!("フォルダ作成エラー: {:?}", e);
+            }
+        }
+    }
+
+    /// 解凍ダイアログを表示
+    pub fn show_unpack_dialog(&mut self) {
+        // 選択されたファイルが圧縮ファイルかチェック
+        if let Some(selected_path) = self.state.selected_items.first() {
+            let full_path = selected_path.clone();
+            if ArchiveHandler::is_archive(&full_path) {
+                self.state.current_archive = Some(full_path);
+                self.state.unpack_destination = self.state.current_path.to_string_lossy().to_string();
+                self.state.show_unpack_dialog = true;
+            } else {
+                // self.state.status_message = "選択されたファイルは圧縮ファイルではありません".to_string();
+            }
+        } else {
+            // self.state.status_message = "解凍するファイルを選択してください".to_string();
+        }
+    }
+
+    /// 圧縮ダイアログを表示
+    pub fn show_pack_dialog(&mut self) {
+        if !self.state.selected_items.is_empty() {
+            self.state.pack_filename = "archive.zip".to_string();
+            self.state.pack_format = ArchiveType::Zip;
+            self.state.show_pack_dialog = true;
+        } else {
+            // self.state.status_message = "圧縮するファイルやフォルダを選択してください".to_string();
+        }
+    }
+
+    /// 圧縮ファイルビューアを表示
+    pub fn show_archive_viewer(&mut self, archive_path: PathBuf) {
+        match ArchiveHandler::list_archive_contents(&archive_path) {
+            Ok(entries) => {
+                self.state.archive_entries = entries;
+                self.state.current_archive = Some(archive_path);
+                self.state.show_archive_viewer = true;
+            }
+            Err(e) => {
+                // self.state.status_message = format!("圧縮ファイル読み込みエラー: {}", e);
+                tracing::error!("圧縮ファイル読み込みエラー: {}", e);
+            }
+        }
+    }
+
+    /// 圧縮ファイルを解凍
+    pub fn extract_archive(&mut self) {
+        if let Some(archive_path) = &self.state.current_archive.clone() {
+            let destination = PathBuf::from(&self.state.unpack_destination);
+            
+            match ArchiveHandler::extract_archive(archive_path, &destination) {
+                Ok(()) => {
+                    // self.state.status_message = format!("解凍完了: {}", destination.display());
+                    self.state.show_unpack_dialog = false;
+                    // self.refresh_directory();
+                    tracing::info!("圧縮ファイルを解凍しました: {:?} -> {:?}", archive_path, destination);
+                }
+                Err(e) => {
+                    // self.state.status_message = format!("解凍エラー: {}", e);
+                    tracing::error!("解凍エラー: {}", e);
+                }
+            }
+        }
+    }
+
+    /// ファイル・フォルダを圧縮
+    pub fn create_archive(&mut self) {
+        let selected_paths: Vec<PathBuf> = self.state.selected_items.clone();
+
+        if selected_paths.is_empty() {
+            // self.state.status_message = "圧縮するファイルやフォルダを選択してください".to_string();
+            return;
+        }
+
+        let archive_path = self.state.current_path.join(&self.state.pack_filename);
+        
+        match ArchiveHandler::create_archive(&selected_paths, &archive_path, self.state.pack_format.clone()) {
+            Ok(()) => {
+                // self.state.status_message = format!("圧縮完了: {}", archive_path.display());
+                self.state.show_pack_dialog = false;
+                // self.refresh_directory();
+                tracing::info!("ファイルを圧縮しました: {:?} -> {:?}", selected_paths, archive_path);
+            }
+            Err(e) => {
+                // self.state.status_message = format!("圧縮エラー: {}", e);
+                tracing::error!("圧縮エラー: {}", e);
+            }
+        }
+    }
+
+    /// 圧縮ファイルビューアを閉じる
+    pub fn close_archive_viewer(&mut self) {
+        self.state.show_archive_viewer = false;
+        self.state.archive_entries.clear();
+        self.state.current_archive = None;
     }
 } 

@@ -20,17 +20,18 @@ impl FileListUI {
         sort_ascending: &mut bool,
         directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
+        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
         match view_mode {
             ViewMode::Details => Self::show_details_view(
                 ui, entries, current_path, selected_items, last_selected_index,
-                sort_column, sort_ascending, directory_cache, navigate_callback
+                sort_column, sort_ascending, directory_cache, navigate_callback, file_open_callback
             ),
             ViewMode::List => Self::show_list_view(
-                ui, entries, current_path, selected_items, last_selected_index, navigate_callback
+                ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
             ),
             ViewMode::Grid => Self::show_grid_view(
-                ui, entries, current_path, selected_items, last_selected_index, navigate_callback
+                ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
             ),
         }
     }
@@ -46,6 +47,7 @@ impl FileListUI {
         sort_ascending: &mut bool,
         directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
+        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
         let table = TableBuilder::new(ui)
             .striped(true)
@@ -132,10 +134,8 @@ impl FileListUI {
                             if entry.is_dir {
                                 navigate_callback(entry_path.clone());
                             } else {
-                                // ファイルを開く
-                                if let Err(e) = open::that(&entry_path) {
-                                    tracing::error!("ファイルオープンエラー: {:?}", e);
-                                }
+                                // ファイルを閲覧モードで開く
+                                file_open_callback(entry_path.clone());
                             }
                         }
                         if name_response.clicked() {
@@ -213,6 +213,7 @@ impl FileListUI {
         selected_items: &mut Vec<std::path::PathBuf>,
         last_selected_index: &mut Option<usize>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
+        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (row_index, entry) in entries.iter().enumerate() {
@@ -228,9 +229,7 @@ impl FileListUI {
                         if entry.is_dir {
                             navigate_callback(entry_path.clone());
                         } else {
-                            if let Err(e) = open::that(&entry_path) {
-                                tracing::error!("ファイルオープンエラー: {:?}", e);
-                            }
+                            file_open_callback(entry_path.clone());
                         }
                     }
                     
@@ -285,6 +284,7 @@ impl FileListUI {
         selected_items: &mut Vec<std::path::PathBuf>,
         last_selected_index: &mut Option<usize>,
         navigate_callback: &mut dyn FnMut(std::path::PathBuf),
+        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
         const ITEM_SIZE: f32 = 80.0;
         const SPACING: f32 = 10.0;
@@ -323,9 +323,7 @@ impl FileListUI {
                                     if entry.is_dir {
                                         navigate_callback(entry_path.clone());
                                     } else {
-                                        if let Err(e) = open::that(&entry_path) {
-                                            tracing::error!("ファイルオープンエラー: {:?}", e);
-                                        }
+                                        file_open_callback(entry_path.clone());
                                     }
                                 }
                                 

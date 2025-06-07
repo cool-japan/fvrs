@@ -2,6 +2,8 @@ use std::collections::VecDeque;
 use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
+use crate::archive::{ArchiveEntry, ArchiveType};
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct AppState {
     pub current_path: PathBuf,
@@ -19,6 +21,34 @@ pub struct AppState {
     pub show_delete_dialog: bool,
     pub delete_dialog_items: Vec<PathBuf>,
     pub show_shortcuts_dialog: bool,
+    // ファイル閲覧・編集機能
+    pub show_file_viewer: bool,
+    pub viewed_file_path: Option<PathBuf>,
+    pub viewed_file_content: String,
+    pub file_viewer_width: f32,
+    pub is_file_modified: bool,
+    pub view_mode_text: bool, // true: 編集モード, false: 閲覧モード
+    // 未保存変更確認ダイアログ
+    pub show_unsaved_dialog: bool,
+    pub pending_close_action: bool,
+    // エディタオプション
+    pub show_line_numbers: bool,
+    // 新規ファイル作成ダイアログ
+    pub show_create_file_dialog: bool,
+    pub new_file_name: String,
+    // 新規フォルダ作成ダイアログ
+    pub show_create_folder_dialog: bool,
+    pub new_folder_name: String,
+    
+    // 圧縮ファイル関連
+    pub show_unpack_dialog: bool,
+    pub show_pack_dialog: bool,
+    pub show_archive_viewer: bool,
+    pub archive_entries: Vec<ArchiveEntry>,
+    pub current_archive: Option<PathBuf>,
+    pub unpack_destination: String,
+    pub pack_filename: String,
+    pub pack_format: ArchiveType,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -87,6 +117,34 @@ impl Default for AppState {
             show_delete_dialog: false,
             delete_dialog_items: Vec::new(),
             show_shortcuts_dialog: false,
+            // ファイル閲覧・編集機能
+            show_file_viewer: false,
+            viewed_file_path: None,
+            viewed_file_content: String::new(),
+            file_viewer_width: 800.0,
+            is_file_modified: false,
+            view_mode_text: false, // true: 編集モード, false: 閲覧モード
+            // 未保存変更確認ダイアログ
+            show_unsaved_dialog: false,
+            pending_close_action: false,
+            // エディタオプション
+            show_line_numbers: false,
+            // 新規ファイル作成ダイアログ
+            show_create_file_dialog: false,
+            new_file_name: String::new(),
+            // 新規フォルダ作成ダイアログ
+            show_create_folder_dialog: false,
+            new_folder_name: String::new(),
+            
+            // 圧縮ファイル関連
+            show_unpack_dialog: false,
+            show_pack_dialog: false,
+            show_archive_viewer: false,
+            archive_entries: Vec::new(),
+            current_archive: None,
+            unpack_destination: String::new(),
+            pack_filename: String::new(),
+            pack_format: ArchiveType::Zip,
         }
     }
 } 

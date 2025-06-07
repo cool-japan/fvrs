@@ -6,6 +6,18 @@ pub struct ShortcutHandler;
 impl ShortcutHandler {
     /// ショートカットキーを処理する
     pub fn handle_shortcuts(app: &mut FileVisorApp, ctx: &Context) {
+        // ダイアログが表示されている間はショートカットキーを無効にする
+        if app.state.show_delete_dialog 
+            || app.state.show_shortcuts_dialog 
+            || app.state.show_create_file_dialog 
+            || app.state.show_create_folder_dialog 
+            || app.state.show_unsaved_dialog
+            || app.state.show_unpack_dialog
+            || app.state.show_pack_dialog 
+                 {
+             return;
+         }
+
         ctx.input(|i| {
             // 既存のショートカット
             if i.key_pressed(Key::F5) {
@@ -71,9 +83,9 @@ impl ShortcutHandler {
                 if i.key_pressed(Key::M) {
                     Self::move_files(app);
                 }
-                // N: 分割
+                // N: 新規ファイル作成
                 if i.key_pressed(Key::N) {
-                    Self::split_files(app);
+                    Self::create_file(app);
                 }
                 // O: 開く
                 if i.key_pressed(Key::O) {
@@ -125,6 +137,28 @@ impl ShortcutHandler {
                 }
             }
         });
+
+        if ctx.input(|i| i.key_pressed(Key::U)) {
+            tracing::info!("解凍ダイアログを表示");
+            app.show_unpack_dialog();
+        }
+
+        if ctx.input(|i| i.key_pressed(Key::P)) {
+            tracing::info!("圧縮ダイアログを表示");
+            app.show_pack_dialog();
+        }
+
+        if ctx.input(|i| i.key_pressed(Key::V)) {
+            if let Some(selected_path) = app.state.selected_items.first() {
+                let full_path = selected_path.clone();
+                    if crate::archive::ArchiveHandler::is_archive(&full_path) {
+                        tracing::info!("圧縮ファイルビューアを表示: {:?}", full_path);
+                        app.show_archive_viewer(full_path);
+                    } else {
+                        // app.open_file(full_path);
+                    }
+            }
+        }
     }
 
     // ===== 基本操作 =====
@@ -216,8 +250,9 @@ impl ShortcutHandler {
     // ===== フォルダ操作 =====
 
     fn create_folder(app: &mut FileVisorApp) {
-        app.create_new_folder("新しいフォルダー");
-        tracing::info!("新しいフォルダーを作成しました");
+        app.state.show_create_folder_dialog = true;
+        app.state.new_folder_name.clear();
+        tracing::info!("新規フォルダ作成ダイアログを表示");
     }
 
     fn open_folder(app: &mut FileVisorApp) {
@@ -282,8 +317,18 @@ impl ShortcutHandler {
         tracing::info!("バイナリ編集機能（未実装）");
     }
 
-    fn edit_with_editor(_app: &mut FileVisorApp) {
-        tracing::info!("エディタで編集機能（未実装）");
+    fn edit_with_editor(app: &mut FileVisorApp) {
+        if let Some(selected_file) = app.state.selected_items.first().cloned() {
+            if selected_file.is_file() {
+                use crate::ui::FileViewerUI;
+                FileViewerUI::open_file_for_editing(app, selected_file.clone());
+                tracing::info!("ファイル編集を開始: {:?}", selected_file);
+            } else {
+                tracing::warn!("選択されたアイテムはファイルではありません");
+            }
+        } else {
+            tracing::warn!("編集するファイルが選択されていません");
+        }
     }
 
     fn find_files(_app: &mut FileVisorApp) {
@@ -298,8 +343,10 @@ impl ShortcutHandler {
         tracing::info!("連結機能（未実装）");  
     }
 
-    fn split_files(_app: &mut FileVisorApp) {
-        tracing::info!("分割機能（未実装）");
+    fn create_file(app: &mut FileVisorApp) {
+        app.state.show_create_file_dialog = true;
+        app.state.new_file_name.clear();
+        tracing::info!("新規ファイル作成ダイアログを表示");
     }
 
     fn create_archive(_app: &mut FileVisorApp) {
@@ -310,8 +357,18 @@ impl ShortcutHandler {
         tracing::info!("圧縮書庫解凍機能（未実装）");
     }
 
-    fn view_files(_app: &mut FileVisorApp) {
-        tracing::info!("ファイル閲覧機能（未実装）");
+    fn view_files(app: &mut FileVisorApp) {
+        if let Some(selected_file) = app.state.selected_items.first().cloned() {
+            if selected_file.is_file() {
+                use crate::ui::FileViewerUI;
+                FileViewerUI::open_file_for_viewing(app, selected_file.clone());
+                tracing::info!("ファイル閲覧を開始: {:?}", selected_file);
+            } else {
+                tracing::warn!("選択されたアイテムはファイルではありません");
+            }
+        } else {
+            tracing::warn!("閲覧するファイルが選択されていません");
+        }
     }
 
     fn set_filter(_app: &mut FileVisorApp) {
@@ -325,5 +382,25 @@ impl ShortcutHandler {
     fn show_hotkeys(app: &mut FileVisorApp) {
         app.state.show_shortcuts_dialog = true;
         tracing::info!("ショートカットキー一覧を表示");
+    }
+
+    pub fn get_shortcut_description() -> Vec<(&'static str, &'static str)> {
+        vec![
+            ("A-Z", "頭文字検索"),
+            ("Enter", "開く"),
+            ("Backspace", "親ディレクトリ"),
+            ("Del", "削除"),
+            ("F2", "名前変更"),
+            ("F5", "更新"),
+            ("H", "ヘルプ"),
+            ("N", "新規ファイル作成"),
+            ("K", "新規フォルダ作成"),
+            ("U", "解凍 (Unpack)"),
+            ("P", "圧縮 (Pack)"),
+            ("V", "表示/圧縮ファイル中身"),
+            ("C", "複製"),
+            ("M", "移動"),
+            ("S", "圧縮書庫作成"),
+        ]
     }
 } 

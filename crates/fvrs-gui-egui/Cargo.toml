@@ -12,18 +12,30 @@ path = "src/main.rs"
 
 [dependencies]
 fvrs-core = { path = "../fvrs-core" }
-eframe = "0.31.1"
-egui = "0.31.1"
+eframe = { version = "0.31", default-features = false, features = [
+    "default_fonts", 
+    "glow",
+    "wayland",
+] }
+egui = "0.31"
 egui_extras = { version = "0.31.1", features = ["default", "file"] }
-chrono = { version = "0.4", default-features = false, features = ["clock", "std", "serde"] }
+chrono = { version = "0.4", features = ["serde"] }
 tokio = { version = "1.0", features = ["full"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-rfd = "0.15"
+rfd = "0.14"
 open = "5.0"
 tracing = "0.1"
 tracing-subscriber = "0.3"
-arboard = "3.4"
+arboard = "3.5"
+notify = "6.1"
+
+# 圧縮ファイル処理
+zip = "2.1"
+delharc = "0.6"
+tar = "0.4"
+flate2 = "1.0"
+sevenz-rust = "0.6"
 
 [features]
 default = ["clipboard"]

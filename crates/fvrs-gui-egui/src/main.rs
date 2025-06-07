@@ -2,13 +2,14 @@ mod state;
 mod utils;
 mod app;
 mod ui;
+mod archive;
 
 use std::path::PathBuf;
 use fvrs_core::core::FileEntry;
 
 use app::FileVisorApp;
 use state::{ViewMode, SortColumn};
-use ui::{FileListUI, DialogsUI, ShortcutHandler};
+use ui::{FileListUI, DialogsUI, ShortcutHandler, FileViewerUI};
 
 impl eframe::App for FileVisorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -23,10 +24,18 @@ impl eframe::App for FileVisorApp {
             egui::menu::bar(ui, |ui| {
                 // ファイルメニュー
                 ui.menu_button("ファイル", |ui| {
-                    if ui.button("新規作成").clicked() {
-                        self.create_new_folder("新しいフォルダー");
-                        ui.close_menu();
-                    }
+                    ui.menu_button("新規作成", |ui| {
+                        if ui.button("📁 新規フォルダ").clicked() {
+                            self.state.show_create_folder_dialog = true;
+                            self.state.new_folder_name.clear();
+                            ui.close_menu();
+                        }
+                        if ui.button("📄 新規ファイル").clicked() {
+                            self.state.show_create_file_dialog = true;
+                            self.state.new_file_name.clear();
+                            ui.close_menu();
+                        }
+                    });
                     ui.menu_button("コピー・移動", |ui| {
                         if ui.button("コピー").clicked() { ui.close_menu(); }
                         if ui.button("移動").clicked() { ui.close_menu(); }
@@ -165,9 +174,23 @@ impl eframe::App for FileVisorApp {
 
                 // ツールメニュー
                 ui.menu_button("ツール", |ui| {
-                    if ui.button("ファイル閲覧").clicked() { ui.close_menu(); }
+                    if ui.button("ファイル閲覧").clicked() { 
+                        if let Some(selected_file) = self.state.selected_items.first().cloned() {
+                            if selected_file.is_file() {
+                                FileViewerUI::open_file_for_viewing(self, selected_file);
+                            }
+                        }
+                        ui.close_menu(); 
+                    }
                     if ui.button("バイナリ編集").clicked() { ui.close_menu(); }
-                    if ui.button("エディタで編集").clicked() { ui.close_menu(); }
+                    if ui.button("エディタで編集").clicked() { 
+                        if let Some(selected_file) = self.state.selected_items.first().cloned() {
+                            if selected_file.is_file() {
+                                FileViewerUI::open_file_for_editing(self, selected_file);
+                            }
+                        }
+                        ui.close_menu(); 
+                    }
                     ui.separator();
                     if ui.button("ファイルから文字列を検索").clicked() { ui.close_menu(); }
                     if ui.button("コマンドプロンプトを開く").clicked() { ui.close_menu(); }
@@ -322,7 +345,18 @@ impl eframe::App for FileVisorApp {
                 });
             });
 
-        // メイン表示エリア
+        // ファイル閲覧・編集パネル（右側）
+        if self.state.show_file_viewer {
+            egui::SidePanel::right("file_viewer_panel")
+                .resizable(true)
+                .default_width(self.state.file_viewer_width)
+                .width_range(300.0..=800.0)
+                .show(ctx, |ui| {
+                    FileViewerUI::show_file_viewer(ui, self);
+                });
+        }
+
+        // メイン表示エリア（ファイルリスト）
         egui::CentralPanel::default().show(ctx, |ui| {
             // 借用チェッカー対応：必要な値を事前にコピー
             let current_path = self.state.current_path.clone();
@@ -373,10 +407,15 @@ impl eframe::App for FileVisorApp {
             
             // ナビゲーション用の一時的な変数
             let mut navigation_target: Option<PathBuf> = None;
+            let mut file_open_target: Option<PathBuf> = None;
             
             {
                 let mut navigate_callback = |path: PathBuf| {
                     navigation_target = Some(path);
+                };
+                
+                let mut file_open_callback = |path: PathBuf| {
+                    file_open_target = Some(path);
                 };
 
                 FileListUI::show_file_list(
@@ -390,12 +429,18 @@ impl eframe::App for FileVisorApp {
                     &mut self.state.sort_ascending,
                     &mut self.directory_cache,
                     &mut navigate_callback,
+                    &mut file_open_callback,
                 );
             }
             
             // ナビゲーションの実行
             if let Some(target) = navigation_target {
                 self.navigate_to(target);
+            }
+            
+            // ファイル閲覧の実行
+            if let Some(target) = file_open_target {
+                FileViewerUI::open_file_for_viewing(self, target);
             }
         });
 
@@ -453,6 +498,83 @@ impl eframe::App for FileVisorApp {
 
         // ショートカットキー一覧ダイアログ
         DialogsUI::show_shortcuts_dialog(ctx, &mut self.state.show_shortcuts_dialog);
+
+        // 新規ファイル作成ダイアログ
+        let mut create_file_requested = false;
+        let mut cancel_create_file_requested = false;
+        let mut created_file_name = String::new();
+        
+        if self.state.show_create_file_dialog {
+            let mut create_callback = |file_name: &str| {
+                create_file_requested = true;
+                created_file_name = file_name.to_string();
+            };
+            let mut cancel_callback = || {
+                cancel_create_file_requested = true;
+            };
+            
+            DialogsUI::show_create_file_dialog(
+                ctx,
+                &mut self.state.show_create_file_dialog,
+                &mut self.state.new_file_name,
+                &mut create_callback,
+                &mut cancel_callback,
+            );
+        }
+
+        // 新規フォルダ作成ダイアログ
+        let mut create_folder_requested = false;
+        let mut cancel_create_folder_requested = false;
+        let mut created_folder_name = String::new();
+        
+        if self.state.show_create_folder_dialog {
+            let mut create_callback = |folder_name: &str| {
+                create_folder_requested = true;
+                created_folder_name = folder_name.to_string();
+            };
+            let mut cancel_callback = || {
+                cancel_create_folder_requested = true;
+            };
+            
+            DialogsUI::show_create_folder_dialog(
+                ctx,
+                &mut self.state.show_create_folder_dialog,
+                &mut self.state.new_folder_name,
+                &mut create_callback,
+                &mut cancel_callback,
+            );
+        }
+
+        // 未保存変更確認ダイアログ
+        let mut save_requested = false;
+        let mut discard_requested = false;
+        let mut cancel_requested_unsaved = false;
+        
+        if self.state.show_unsaved_dialog {
+            let file_name = self.state.viewed_file_path
+                .as_ref()
+                .and_then(|p| p.file_name())
+                .and_then(|n| n.to_str())
+                .unwrap_or("不明なファイル");
+                
+            let mut save_callback = || { save_requested = true; };
+            let mut discard_callback = || { discard_requested = true; };
+            let mut cancel_callback = || { cancel_requested_unsaved = true; };
+            
+            DialogsUI::show_unsaved_changes_dialog(
+                ctx,
+                &mut self.state.show_unsaved_dialog,
+                file_name,
+                &mut save_callback,
+                &mut discard_callback,
+                &mut cancel_callback,
+            );
+        }
+
+        // 圧縮ファイル関連ダイアログ
+        DialogsUI::show_unpack_dialog(ctx, self);
+        DialogsUI::show_pack_dialog(ctx, self);
+        DialogsUI::show_archive_viewer(ctx, self);
         
         // ダイアログアクションの実行
         if delete_requested {
@@ -461,6 +583,36 @@ impl eframe::App for FileVisorApp {
         if cancel_requested {
             self.state.show_delete_dialog = false;
             self.state.delete_dialog_items.clear();
+        }
+        
+        // 未保存変更ダイアログのアクション実行
+        if save_requested {
+            FileViewerUI::save_and_close_file_viewer(self);
+        }
+        if discard_requested {
+            FileViewerUI::force_close_file_viewer(self);
+        }
+        if cancel_requested_unsaved {
+            self.state.show_unsaved_dialog = false;
+            self.state.pending_close_action = false;
+        }
+        
+        // 新規ファイル作成ダイアログのアクション実行
+        if create_file_requested {
+            self.create_new_file(&created_file_name);
+        }
+        if cancel_create_file_requested {
+            self.state.show_create_file_dialog = false;
+            self.state.new_file_name.clear();
+        }
+        
+        // 新規フォルダ作成ダイアログのアクション実行
+        if create_folder_requested {
+            self.create_new_folder_dialog(&created_folder_name);
+        }
+        if cancel_create_folder_requested {
+            self.state.show_create_folder_dialog = false;
+            self.state.new_folder_name.clear();
         }
 
         // フレーム時間記録
