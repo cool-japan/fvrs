@@ -7,6 +7,7 @@ use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
 
 
+
 use eframe::egui::{self, *};
 use egui_extras::{TableBuilder, Column};
 use chrono::{DateTime, Local};
@@ -95,8 +96,20 @@ pub enum FileOperation {
 
 impl Default for AppState {
     fn default() -> Self {
+        // より安全なデフォルトパス選択
+        let default_path = std::env::current_dir()
+            .or_else(|_| std::env::home_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")))
+            .unwrap_or_else(|_| {
+                // Windows環境でのフォールバック
+                if cfg!(windows) {
+                    PathBuf::from("C:\\Users")
+                } else {
+                    PathBuf::from("/")
+                }
+            });
+            
         Self {
-            current_path: std::env::current_dir().unwrap_or_else(|_| PathBuf::from("C:\\")),
+            current_path: default_path,
             navigation_history: VecDeque::with_capacity(100),
             history_position: 0,
             search_query: String::new(),
@@ -115,6 +128,9 @@ impl FileVisorApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // ログ設定（既に初期化されている場合はスキップ）
         let _ = tracing_subscriber::fmt::try_init();
+        
+        // 日本語フォント設定
+        Self::setup_japanese_fonts(&cc.egui_ctx);
         
         // 状態復元の試行
         let state = if let Some(storage) = cc.storage {
@@ -150,26 +166,109 @@ impl FileVisorApp {
         app
     }
 
-    // ディレクトリ読み込み（キャッシュ付き）
+    // 日本語フォントの設定
+    fn setup_japanese_fonts(ctx: &egui::Context) {
+        let mut fonts = egui::FontDefinitions::default();
+        
+        // より多くのWindowsフォントパスを試行
+        let font_paths = [
+            "C:/Windows/Fonts/meiryo.ttc",       // メイリオ
+            "C:/Windows/Fonts/msgothic.ttc",     // MSゴシック
+            "C:/Windows/Fonts/YuGothM.ttc",      // 游ゴシック Medium
+            "C:/Windows/Fonts/YuGothR.ttc",      // 游ゴシック Regular
+            "C:/Windows/Fonts/NotoSansCJK-Regular.ttc", // Noto Sans CJK
+            "C:/Windows/Fonts/calibri.ttf",      // Calibri (フォールバック)
+        ];
+
+        for font_path in &font_paths {
+            if let Ok(font_data) = std::fs::read(font_path) {
+                fonts.font_data.insert(
+                    "japanese_font".to_owned(),
+                    egui::FontData::from_owned(font_data).into(),
+                );
+
+                // プロポーショナルフォントファミリーに日本語フォントを最優先で追加
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Proportional)
+                    .or_default()
+                    .insert(0, "japanese_font".to_owned());
+
+                // モノスペースフォントファミリーにも追加
+                fonts
+                    .families
+                    .entry(egui::FontFamily::Monospace)
+                    .or_default()
+                    .insert(0, "japanese_font".to_owned());
+
+                tracing::info!("日本語フォントを読み込みました: {}", font_path);
+                break;
+            }
+        }
+
+        ctx.set_fonts(fonts);
+    }
+
+    // ディレクトリ読み込み（キャッシュ付き）- Windows対応改善版
     fn load_directory(&mut self, path: &Path) -> Result<&Vec<FileEntry>, String> {
         if !self.directory_cache.contains_key(path) {
-            let fs = self.file_system.lock().unwrap();
-            // FileSystemは非同期APIなので、ランタイムを使用
-            match self.runtime.block_on(fs.list_files(Some(path.to_path_buf()))) {
+            // まずパスの存在確認
+            if !path.exists() {
+                return Err(format!("パスが存在しません: {}", path.display()));
+            }
+            
+            if !path.is_dir() {
+                return Err(format!("ディレクトリではありません: {}", path.display()));
+            }
+
+            // 標準ライブラリを使用してより安全にディレクトリを読み込み
+            match std::fs::read_dir(path) {
                 Ok(entries) => {
-                    let mut filtered_entries: Vec<FileEntry> = entries
-                        .into_iter()
-                        .filter(|entry| {
-                            self.state.show_hidden || 
-                            !entry.name.starts_with('.')
-                        })
-                        .collect();
+                    let mut file_entries = Vec::new();
+                    
+                    for entry_result in entries {
+                        match entry_result {
+                            Ok(entry) => {
+                                let path = entry.path();
+                                let name = entry.file_name().to_string_lossy().to_string();
+                                
+                                if let Ok(metadata) = entry.metadata() {
+                                    let file_entry = FileEntry {
+                                        name,
+                                        path: path.clone(),
+                                        size: metadata.len(),
+                                        is_dir: metadata.is_dir(),
+                                        created: metadata.created()
+                                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                                            .into(),
+                                        modified: metadata.modified()
+                                            .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
+                                            .into(),
+                                        extension: path.extension()
+                                            .and_then(|ext| ext.to_str())
+                                            .map(|s| s.to_string()),
+                                    };
+                                    
+                                    // 隠しファイルのフィルタリング
+                                    if self.state.show_hidden || !file_entry.name.starts_with('.') {
+                                        file_entries.push(file_entry);
+                                    }
+                                }
+                            }
+                            Err(e) => {
+                                tracing::warn!("エントリ読み込みエラー: {:?}", e);
+                                continue;
+                            }
+                        }
+                    }
 
                     // ソート適用
-                    self.sort_entries(&mut filtered_entries);
-                    self.directory_cache.insert(path.to_path_buf(), filtered_entries);
+                    self.sort_entries(&mut file_entries);
+                    self.directory_cache.insert(path.to_path_buf(), file_entries);
                 }
-                Err(e) => return Err(format!("ディレクトリ読み込みエラー: {:?}", e)),
+                Err(e) => {
+                    return Err(format!("ディレクトリアクセスエラー: {} ({})", e, path.display()));
+                }
             }
         }
         
@@ -499,11 +598,26 @@ impl eframe::App for FileVisorApp {
                 Err(error_msg) => {
                     ui.vertical_centered(|ui| {
                         ui.add_space(50.0);
-                        ui.colored_label(egui::Color32::RED, "❌ エラー");
-                        ui.label(error_msg);
-                        if ui.button("再試行").clicked() {
-                            self.directory_cache.remove(&current_path);
-                        }
+                        ui.colored_label(egui::Color32::RED, "❌ ディレクトリアクセスエラー");
+                        ui.label(&error_msg);
+                        ui.add_space(10.0);
+                        
+                        ui.horizontal(|ui| {
+                            if ui.button("再試行").clicked() {
+                                self.directory_cache.remove(&current_path);
+                            }
+                            if ui.button("ホームに戻る").clicked() {
+                                if let Ok(home_dir) = std::env::home_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")) {
+                                    self.navigate_to(home_dir);
+                                }
+                            }
+                            if ui.button("Cドライブに移動").clicked() {
+                                self.navigate_to(PathBuf::from("C:\\"));
+                            }
+                        });
+                        
+                        ui.add_space(10.0);
+                        ui.colored_label(egui::Color32::GRAY, "💡 ヒント: パスが存在するか、アクセス権限があるか確認してください");
                     });
                     return;
                 }
