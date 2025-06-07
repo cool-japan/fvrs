@@ -5,8 +5,7 @@
 use std::collections::{HashMap, VecDeque};
 use std::sync::{Arc, Mutex};
 use std::path::{Path, PathBuf};
-use std::ffi::OsStr;
-use std::time::SystemTime;
+
 
 use eframe::egui::{self, *};
 use egui_extras::{TableBuilder, Column};
@@ -246,7 +245,7 @@ impl FileVisorApp {
 
     // 進む操作
     fn go_forward(&mut self) {
-        if self.state.history_position < self.state.navigation_history.len() - 1 {
+        if self.state.history_position < self.state.navigation_history.len().saturating_sub(1) {
             self.state.history_position += 1;
             let path = self.state.navigation_history[self.state.history_position].clone();
             self.state.current_path = path;
@@ -289,7 +288,8 @@ impl FileVisorApp {
         }
     }
 
-    // ファイル名取得でエラーハンドリング
+    // ファイル名取得でエラーハンドリング（将来使用予定）
+    #[allow(dead_code)]
     fn get_display_name(path: &Path) -> String {
         path.file_name()
             .and_then(|os_str| os_str.to_str())
@@ -388,7 +388,7 @@ impl eframe::App for FileVisorApp {
             ui.horizontal(|ui| {
                 // ナビゲーションボタン
                 let back_enabled = self.state.history_position > 0;
-                let forward_enabled = self.state.history_position < self.state.navigation_history.len() - 1;
+                let forward_enabled = self.state.history_position < self.state.navigation_history.len().saturating_sub(1);
                 
                 if ui.add_enabled(back_enabled, egui::Button::new("←")).clicked() {
                     self.go_back();
@@ -489,29 +489,35 @@ impl eframe::App for FileVisorApp {
 
         // メイン表示エリア
         egui::CentralPanel::default().show(ctx, |ui| {
-            match self.load_directory(&self.state.current_path.clone()) {
-                Ok(entries) => {
-                    let filtered_entries: Vec<&FileEntry> = entries
-                        .iter()
-                        .filter(|entry| {
-                            self.state.search_query.is_empty() ||
-                            entry.name.to_lowercase().contains(&self.state.search_query.to_lowercase())
-                        })
-                        .collect();
-
-                    self.show_file_list(ui, &filtered_entries);
-                }
+            // 借用チェッカー対応：必要な値を事前にコピー
+            let current_path = self.state.current_path.clone();
+            let search_query = self.state.search_query.clone();
+            
+            // entriesをクローンして所有権を取得し、借用の問題を回避
+            let entries = match self.load_directory(&current_path) {
+                Ok(entries) => entries.clone(),
                 Err(error_msg) => {
                     ui.vertical_centered(|ui| {
                         ui.add_space(50.0);
                         ui.colored_label(egui::Color32::RED, "❌ エラー");
                         ui.label(error_msg);
                         if ui.button("再試行").clicked() {
-                            self.directory_cache.remove(&self.state.current_path);
+                            self.directory_cache.remove(&current_path);
                         }
                     });
+                    return;
                 }
-            }
+            };
+            
+            let filtered_entries: Vec<&FileEntry> = entries
+                .iter()
+                .filter(|entry| {
+                    search_query.is_empty() ||
+                    entry.name.to_lowercase().contains(&search_query.to_lowercase())
+                })
+                .collect();
+
+            self.show_file_list(ui, &filtered_entries);
         });
 
         // ステータスバー
@@ -520,7 +526,10 @@ impl eframe::App for FileVisorApp {
                 ui.label(format!("📁 {}", self.state.current_path.display()));
                 ui.separator();
                 
-                if let Ok(entries) = self.load_directory(&self.state.current_path.clone()) {
+                // 借用チェッカー対応：パスをコピーしてentriesをクローン
+                let current_path = self.state.current_path.clone();
+                if let Ok(entries) = self.load_directory(&current_path) {
+                    let entries = entries.clone();
                     let dirs = entries.iter().filter(|e| e.is_dir).count();
                     let files = entries.len() - dirs;
                     ui.label(format!("📁 {} フォルダー, 📄 {} ファイル", dirs, files));
@@ -643,7 +652,7 @@ impl FileVisorApp {
                     let entry_path = self.state.current_path.join(&entry.name);
                     let is_selected = self.state.selected_items.contains(&entry_path);
 
-                    let response = row.col(|ui| {
+                    let _response = row.col(|ui| {
                         ui.label(if entry.is_dir { "📁" } else { "📄" });
                     });
 
