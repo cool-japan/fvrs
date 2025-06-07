@@ -13,18 +13,9 @@ use notify::{Watcher, RecursiveMode, Event};
 use std::sync::mpsc;
 use regex::Regex;
 use std::collections::VecDeque;
-use std::os::windows::fs::PermissionsExt;
-use std::io::{Read, Write, Seek, BufRead};
-// use zip::{ZipArchive, write::FileOptions};
-// use flate2::{Compress, Decompress, Compression};
-// use tar::{Builder, Archive};
-// use xz2::read::{XzEncoder, XzDecoder};
-// use bzip2::read::{BzEncoder, BzDecoder};
-use sha2::{Sha256, Sha512, Digest};
+use std::ffi::OsStr;
+use notify::event::ModifyKind;
 use md5;
-use blake3::Hasher;
-use ripemd::Ripemd160;
-use sha1::Sha1;
 use hex;
 use std::cmp::min;
 use std::time::{Duration, SystemTime};
@@ -34,14 +25,13 @@ use glob;
 use serde_json;
 use std::fs::File;
 use std::io::BufWriter;
-use tokio::io::{AsyncReadExt, AsyncBufReadExt, BufReader};
 use notify::EventKind;
-use notify::event::ModifyKind;
 use windows::Win32::Storage::FileSystem::*;
 use std::io::BufReader as StdBufReader;
 use tokio::io::BufReader as TokioBufReader;
 use windows::Win32::Storage::FileSystem::{GetFileAttributesW, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM, FILE_ATTRIBUTE_ARCHIVE};
 use std::os::windows::ffi::OsStrExt;
+use tokio::io::{AsyncReadExt, AsyncBufReadExt};
 // use base64;
 // use aes;
 // use cipher;
@@ -122,10 +112,6 @@ pub mod core {
         Search(String),
         #[error("Permission error: {0}")]
         Permission(String),
-        // #[error("Compression error: {0}")]
-        // Compression(String),
-        // #[error("Archive error: {0}")]
-        // Archive(String),
         #[error("Hash error: {0}")]
         Hash(String),
         #[error("Comparison error: {0}")]
@@ -134,6 +120,12 @@ pub mod core {
         Monitoring(String),
         #[error("Serialization error: {0}")]
         Serialization(String),
+    }
+
+    impl From<notify::Error> for FsError {
+        fn from(e: notify::Error) -> Self {
+            FsError::Monitoring(e.to_string())
+        }
     }
 
     /// Result type for filesystem operations
@@ -217,18 +209,17 @@ pub mod core {
 
             #[cfg(windows)]
             {
-                let path_wide: Vec<u16> = path.as_os_str().encode_wide().chain(std::iter::once(0)).collect();
-                let attrs = unsafe { GetFileAttributesW(&path_wide[0]) };
+                let attrs = unsafe { GetFileAttributesW(OsStr::new(path).encode_wide().collect::<Vec<u16>>().as_ptr() as *const u16) };
                 if attrs == u32::MAX {
                     return Err(FsError::Permission("Failed to get file attributes".to_string()));
                 }
                 Ok(Self {
                     readable: true,
-                    writable: attrs & FILE_ATTRIBUTE_READONLY == 0,
+                    writable: attrs & (FILE_ATTRIBUTE_READONLY.0 as u32) == 0,
                     executable: false,
-                    hidden: attrs & FILE_ATTRIBUTE_HIDDEN != 0,
-                    system: attrs & FILE_ATTRIBUTE_SYSTEM != 0,
-                    archive: attrs & FILE_ATTRIBUTE_ARCHIVE != 0,
+                    hidden: attrs & (FILE_ATTRIBUTE_HIDDEN.0 as u32) != 0,
+                    system: attrs & (FILE_ATTRIBUTE_SYSTEM.0 as u32) != 0,
+                    archive: attrs & (FILE_ATTRIBUTE_ARCHIVE.0 as u32) != 0,
                 })
             }
         }
@@ -572,6 +563,8 @@ pub mod core {
         current_dir: PathBuf,
         /// File system event sender
         event_sender: Option<mpsc::Sender<FsEvent>>,
+        /// File system event receiver
+        event_receiver: Option<mpsc::Receiver<FsEvent>>,
     }
 
     impl FileSystem {
@@ -580,6 +573,7 @@ pub mod core {
             Self {
                 current_dir: PathBuf::from("."),
                 event_sender: None,
+                event_receiver: None,
             }
         }
 
@@ -668,48 +662,34 @@ pub mod core {
         pub async fn watch_directory(&mut self, path: &PathBuf) -> FsResult<()> {
             let (tx, rx) = mpsc::channel();
             self.event_sender = Some(tx);
+            self.event_receiver = Some(rx);
 
-            let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| {
+            let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
                 if let Ok(event) = res {
                     match event.kind {
                         notify::EventKind::Create(_) => {
-                            for path in event.paths {
-                                let _ = tx.send(FsEvent {
-                                    event_type: FsEventType::Create,
-                                    path,
-                                    timestamp: Local::now(),
-                                    metadata: HashMap::new(),
-                                });
+                            if let Some(path) = event.paths.first() {
+                                let _ = tx.send(FsEvent::from(event)).unwrap();
                             }
                         }
                         notify::EventKind::Modify(_) => {
-                            for path in event.paths {
-                                let _ = tx.send(FsEvent {
-                                    event_type: FsEventType::Modify,
-                                    path,
-                                    timestamp: Local::now(),
-                                    metadata: HashMap::new(),
-                                });
+                            if let Some(path) = event.paths.first() {
+                                let _ = tx.send(FsEvent::from(event)).unwrap();
                             }
                         }
                         notify::EventKind::Remove(_) => {
-                            for path in event.paths {
-                                let _ = tx.send(FsEvent {
-                                    event_type: FsEventType::Remove,
-                                    path,
-                                    timestamp: Local::now(),
-                                    metadata: HashMap::new(),
-                                });
+                            if let Some(path) = event.paths.first() {
+                                let _ = tx.send(FsEvent::from(event)).unwrap();
                             }
                         }
                         notify::EventKind::Modify(ModifyKind::Name(_)) => {
                             if event.paths.len() >= 2 {
-                                let _ = tx.send(FsEvent {
-                                    event_type: FsEventType::Rename,
-                                    path: event.paths[0].clone(),
-                                    timestamp: Local::now(),
-                                    metadata: HashMap::new(),
-                                });
+                                let _ = tx.send(FsEvent::from(event)).unwrap();
+                            }
+                        }
+                        notify::EventKind::Access(_) => {
+                            if let Some(path) = event.paths.first() {
+                                let _ = tx.send(FsEvent::from(event)).unwrap();
                             }
                         }
                         _ => {}
@@ -723,8 +703,8 @@ pub mod core {
 
         /// Get the next file system event
         pub fn next_event(&self) -> Option<FsEvent> {
-            self.event_sender.as_ref()
-                .and_then(|tx| tx.recv().ok())
+            self.event_receiver.as_ref()
+                .and_then(|rx| rx.try_recv().ok())
         }
 
         /// Search for files matching the given pattern
@@ -842,32 +822,47 @@ pub mod core {
                 HashAlgorithm::MD5 => {
                     let mut buffer = Vec::new();
                     file.read_to_end(&mut buffer).await?;
-                    hex::encode(md5::compute(&buffer))
+                    hex::encode(&md5::compute(&buffer)[..])
                 }
                 HashAlgorithm::SHA1 => {
                     let mut buffer = Vec::new();
                     file.read_to_end(&mut buffer).await?;
-                    hex::encode(sha1::Sha1::new().update(&buffer).finalize())
+                    let mut hasher = sha1::Sha1::new();
+                    hasher.update(&buffer);
+                    let result = hasher.finalize();
+                    hex::encode(&result[..])
                 }
                 HashAlgorithm::SHA256 => {
                     let mut buffer = Vec::new();
                     file.read_to_end(&mut buffer).await?;
-                    hex::encode(sha2::Sha256::new().update(&buffer).finalize())
+                    let mut hasher = sha2::Sha256::new();
+                    hasher.update(&buffer);
+                    let result = hasher.finalize();
+                    hex::encode(&result[..])
                 }
                 HashAlgorithm::SHA512 => {
                     let mut buffer = Vec::new();
                     file.read_to_end(&mut buffer).await?;
-                    hex::encode(sha2::Sha512::new().update(&buffer).finalize())
+                    let mut hasher = sha2::Sha512::new();
+                    hasher.update(&buffer);
+                    let result = hasher.finalize();
+                    hex::encode(&result[..])
                 }
                 HashAlgorithm::BLAKE3 => {
                     let mut buffer = Vec::new();
                     file.read_to_end(&mut buffer).await?;
-                    hex::encode(blake3::Hasher::new().update(&buffer).finalize())
+                    let mut hasher = blake3::Hasher::new();
+                    hasher.update(&buffer);
+                    let result = hasher.finalize();
+                    hex::encode(&result[..])
                 }
                 HashAlgorithm::RIPEMD160 => {
                     let mut buffer = Vec::new();
                     file.read_to_end(&mut buffer).await?;
-                    hex::encode(ripemd::Ripemd160::new().update(&buffer).finalize())
+                    let mut hasher = ripemd::Ripemd160::new();
+                    hasher.update(&buffer);
+                    let result = hasher.finalize();
+                    hex::encode(&result[..])
                 }
             };
 
@@ -902,7 +897,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(hasher.finalize())
+                    hex::encode(&hasher.finalize()[..])
                 }
                 HashAlgorithm::SHA1 => {
                     let mut hasher = sha1::Sha1::new();
@@ -915,7 +910,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(hasher.finalize())
+                    hex::encode(&hasher.finalize()[..])
                 }
                 HashAlgorithm::SHA256 => {
                     let mut hasher = sha2::Sha256::new();
@@ -928,7 +923,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(hasher.finalize())
+                    hex::encode(&hasher.finalize()[..])
                 }
                 HashAlgorithm::SHA512 => {
                     let mut hasher = sha2::Sha512::new();
@@ -941,7 +936,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(hasher.finalize())
+                    hex::encode(&hasher.finalize()[..])
                 }
                 HashAlgorithm::BLAKE3 => {
                     let mut hasher = blake3::Hasher::new();
@@ -954,7 +949,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(hasher.finalize())
+                    hex::encode(&hasher.finalize()[..])
                 }
                 HashAlgorithm::RIPEMD160 => {
                     let mut hasher = ripemd::Ripemd160::new();
@@ -967,7 +962,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(hasher.finalize())
+                    hex::encode(&hasher.finalize()[..])
                 }
             };
 
@@ -1060,8 +1055,8 @@ pub mod core {
             let left_file = fs::File::open(left).await?;
             let right_file = fs::File::open(right).await?;
 
-            let mut left_reader = StdBufReader::new(left_file);
-            let mut right_reader = StdBufReader::new(right_file);
+            let mut left_reader = TokioBufReader::new(left_file);
+            let mut right_reader = TokioBufReader::new(right_file);
 
             let mut left_line = String::new();
             let mut right_line = String::new();
@@ -1166,77 +1161,19 @@ pub mod core {
         /// Start monitoring with settings
         pub async fn start_monitoring_with_settings(&self, settings: MonitoringSettings) -> FsResult<()> {
             let (tx, rx) = mpsc::channel();
-            let mut history = MonitoringHistory::new(settings.max_history);
-            let mut last_event_time = HashMap::new();
+            self.event_sender = Some(tx);
+            self.event_receiver = Some(rx);
 
-            let config = Config::default()
-                .with_poll_interval(Duration::from_millis(settings.debounce_ms));
+            let config = Config::default();
+            config.poll_interval(Duration::from_millis(settings.debounce_ms));
 
-            let mut watcher = notify::recommended_watcher(move |res: Result<Event, _>| {
+            let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    tx.send(event).unwrap();
+                    tx.send(FsEvent::from(event)).unwrap();
                 }
             })?;
 
-            watcher.watch(&settings.path, RecursiveMode::from(settings.recursive))?;
-
-            tokio::spawn(async move {
-                while let Ok(event) = rx.recv() {
-                    let now = SystemTime::now();
-                    let path = event.paths[0].clone();
-
-                    // Check if path matches filter
-                    if !settings.filter.matches(&path) {
-                        continue;
-                    }
-
-                    // Check event type
-                    let event_type = match event.kind {
-                        EventKind::Create(_) => FsEventType::Create,
-                        EventKind::Modify(_) => FsEventType::Modify,
-                        EventKind::Remove(_) => FsEventType::Remove,
-                        EventKind::Modify(ModifyKind::Name(_)) => FsEventType::Rename,
-                        EventKind::Access(_) => FsEventType::Access,
-                        EventKind::Other => continue,
-                    };
-
-                    if !settings.filter.event_types.contains(&event_type) {
-                        continue;
-                    }
-
-                    // Check file size if applicable
-                    if let Ok(metadata) = fs::metadata(&path).await {
-                        if let Some(min_size) = settings.filter.min_size {
-                            if metadata.len() < min_size {
-                                continue;
-                            }
-                        }
-                        if let Some(max_size) = settings.filter.max_size {
-                            if metadata.len() > max_size {
-                                continue;
-                            }
-                        }
-                    }
-
-                    // Debounce events
-                    if let Some(last_time) = last_event_time.get(&path) {
-                        if now.duration_since(*last_time).unwrap() < Duration::from_millis(settings.debounce_ms) {
-                            continue;
-                        }
-                    }
-                    last_event_time.insert(path.clone(), now);
-
-                    // Create and store event
-                    let fs_event = FsEvent {
-                        event_type,
-                        path,
-                        timestamp: Local::now(),
-                        metadata: HashMap::new(),
-                    };
-                    history.add_event(fs_event);
-                }
-            });
-
+            watcher.watch(&settings.path, if settings.recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive })?;
             Ok(())
         }
 
