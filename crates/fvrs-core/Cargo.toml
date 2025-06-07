@@ -1,0 +1,18 @@
+[package]
+name = "fvrs-core"
+version = "0.1.0"
+edition = "2021"
+authors = ["FVRS Team"]
+license = "MIT OR Apache-2.0"
+description = "Core file system operations and async runtime for FVRS"
+
+[dependencies]
+tokio = { workspace = true, features = ["full"] }
+thiserror = { workspace = true }
+anyhow = { workspace = true }
+windows = { workspace = true }
+chrono = { version = "0.4", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+walkdir = "2.3"
+notify = "6.1"
+regex = "1.9" 

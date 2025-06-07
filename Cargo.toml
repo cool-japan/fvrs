@@ -1,0 +1,26 @@
+[workspace]
+members = [
+    "crates/fvrs-core",
+    "crates/fvrs-gui-nwg",
+    "crates/fvrs-gui-slint",
+    "crates/fvrs-shell",
+    "crates/fvrs-plugin-api",
+    "crates/fvrs-plugins",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+authors = ["FVRS Team"]
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/cool-japan/fvrs"
+description = "FVRS Rust Suite - A modern file manager"
+
+[workspace.dependencies]
+tokio = { version = "1.36", features = ["full"] }
+thiserror = "1.0"
+anyhow = "1.0"
+windows = { version = "0.52", features = ["Win32_UI_WindowsAndMessaging", "Win32_Foundation"] }
+slint = "1.3"
+libloading = "0.8"
+fluent-bundle = "0.15" 

@@ -1,0 +1,44 @@
+# Rust build artifacts
+/target/
+**/target/
+
+# IDE specific files
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Debug files
+*.pdb
+
+# OS specific files
+.DS_Store
+Thumbs.db
+
+# Project specific
+/plugins/
+*.log
+*.db
+
+# Dependencies
+Cargo.lock
+
+# Generated documentation
+/doc/
+/docs/
+
+# Test coverage
+/coverage/
+*.profraw
+
+# Environment files
+.env
+.env.local
+.env.*.local
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
+/temp/ 
