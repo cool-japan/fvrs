@@ -440,7 +440,13 @@ impl eframe::App for FileVisorApp {
             
             // ファイル閲覧の実行
             if let Some(target) = file_open_target {
-                FileViewerUI::open_file_for_viewing(self, target);
+                // 圧縮ファイルかどうかをチェック
+                if crate::archive::ArchiveHandler::is_archive(&target) {
+                    tracing::info!("圧縮ファイルビューアを表示: {:?}", target);
+                    self.show_archive_viewer(target);
+                } else {
+                    FileViewerUI::open_file_for_viewing(self, target);
+                }
             }
         });
 
@@ -575,6 +581,9 @@ impl eframe::App for FileVisorApp {
         DialogsUI::show_unpack_dialog(ctx, self);
         DialogsUI::show_pack_dialog(ctx, self);
         DialogsUI::show_archive_viewer(ctx, self);
+        
+        // リネームダイアログ
+        DialogsUI::show_rename_dialog(ctx, self);
         
         // ダイアログアクションの実行
         if delete_requested {

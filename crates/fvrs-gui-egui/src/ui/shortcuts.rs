@@ -13,7 +13,8 @@ impl ShortcutHandler {
             || app.state.show_create_folder_dialog 
             || app.state.show_unsaved_dialog
             || app.state.show_unpack_dialog
-            || app.state.show_pack_dialog 
+            || app.state.show_pack_dialog
+            || app.state.show_rename_dialog 
                  {
              return;
          }
@@ -148,16 +149,21 @@ impl ShortcutHandler {
             app.show_pack_dialog();
         }
 
-        if ctx.input(|i| i.key_pressed(Key::V)) {
+                    if ctx.input(|i| i.key_pressed(Key::V)) {
             if let Some(selected_path) = app.state.selected_items.first() {
                 let full_path = selected_path.clone();
-                    if crate::archive::ArchiveHandler::is_archive(&full_path) {
-                        tracing::info!("圧縮ファイルビューアを表示: {:?}", full_path);
-                        app.show_archive_viewer(full_path);
-                    } else {
-                        // app.open_file(full_path);
-                    }
+                if crate::archive::ArchiveHandler::is_archive(&full_path) {
+                    tracing::info!("圧縮ファイルビューアを表示: {:?}", full_path);
+                    app.show_archive_viewer(full_path);
+                } else {
+                    // app.open_file(full_path);
+                }
             }
+        }
+
+        if ctx.input(|i| i.key_pressed(Key::R)) {
+            tracing::info!("リネームダイアログを表示");
+            app.show_rename_dialog();
         }
     }
 
@@ -398,6 +404,7 @@ impl ShortcutHandler {
             ("U", "解凍 (Unpack)"),
             ("P", "圧縮 (Pack)"),
             ("V", "表示/圧縮ファイル中身"),
+            ("R", "名前変更 (Rename)"),
             ("C", "複製"),
             ("M", "移動"),
             ("S", "圧縮書庫作成"),

@@ -389,7 +389,7 @@ impl FileVisorApp {
                 Ok(()) => {
                     // self.state.status_message = format!("解凍完了: {}", destination.display());
                     self.state.show_unpack_dialog = false;
-                    // self.refresh_directory();
+                    self.reload_current_directory();
                     tracing::info!("圧縮ファイルを解凍しました: {:?} -> {:?}", archive_path, destination);
                 }
                 Err(e) => {
@@ -415,7 +415,7 @@ impl FileVisorApp {
             Ok(()) => {
                 // self.state.status_message = format!("圧縮完了: {}", archive_path.display());
                 self.state.show_pack_dialog = false;
-                // self.refresh_directory();
+                self.reload_current_directory();
                 tracing::info!("ファイルを圧縮しました: {:?} -> {:?}", selected_paths, archive_path);
             }
             Err(e) => {
@@ -430,5 +430,56 @@ impl FileVisorApp {
         self.state.show_archive_viewer = false;
         self.state.archive_entries.clear();
         self.state.current_archive = None;
+    }
+    
+    /// 現在のディレクトリをリロード
+    pub fn reload_current_directory(&mut self) {
+        self.directory_cache.remove(&self.state.current_path);
+        // キャッシュをクリアすることで次回表示時に再読み込みされる
+    }
+    
+    /// リネームダイアログを表示
+    pub fn show_rename_dialog(&mut self) {
+        if let Some(selected_path) = self.state.selected_items.first() {
+            self.state.rename_target_path = Some(selected_path.clone());
+            self.state.rename_new_name = selected_path.file_name()
+                .and_then(|name| name.to_str())
+                .unwrap_or("")
+                .to_string();
+            self.state.show_rename_dialog = true;
+        }
+    }
+    
+    /// ファイル・フォルダをリネーム
+    pub fn rename_item(&mut self) {
+        if let Some(old_path) = &self.state.rename_target_path.clone() {
+            let new_name = &self.state.rename_new_name;
+            if new_name.is_empty() {
+                return;
+            }
+            
+            let new_path = old_path.parent()
+                .map(|parent| parent.join(new_name))
+                .unwrap_or_else(|| PathBuf::from(new_name));
+            
+            match std::fs::rename(old_path, &new_path) {
+                Ok(()) => {
+                    tracing::info!("リネーム完了: {:?} -> {:?}", old_path, new_path);
+                    
+                    // 選択アイテムを更新
+                    if let Some(index) = self.state.selected_items.iter().position(|path| path == old_path) {
+                        self.state.selected_items[index] = new_path;
+                    }
+                    
+                    self.state.show_rename_dialog = false;
+                    self.state.rename_new_name.clear();
+                    self.state.rename_target_path = None;
+                    self.reload_current_directory();
+                }
+                Err(e) => {
+                    tracing::error!("リネームエラー: {:?}", e);
+                }
+            }
+        }
     }
 } 

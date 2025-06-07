@@ -40,6 +40,11 @@ pub struct AppState {
     pub show_create_folder_dialog: bool,
     pub new_folder_name: String,
     
+    // リネームダイアログ
+    pub show_rename_dialog: bool,
+    pub rename_new_name: String,
+    pub rename_target_path: Option<PathBuf>,
+    
     // 圧縮ファイル関連
     pub show_unpack_dialog: bool,
     pub show_pack_dialog: bool,
@@ -135,6 +140,11 @@ impl Default for AppState {
             // 新規フォルダ作成ダイアログ
             show_create_folder_dialog: false,
             new_folder_name: String::new(),
+            
+            // リネームダイアログ
+            show_rename_dialog: false,
+            rename_new_name: String::new(),
+            rename_target_path: None,
             
             // 圧縮ファイル関連
             show_unpack_dialog: false,

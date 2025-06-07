@@ -544,4 +544,55 @@ impl DialogsUI {
                 }
             });
     }
+
+    /// リネームダイアログ
+    pub fn show_rename_dialog(ctx: &egui::Context, app: &mut crate::app::FileVisorApp) {
+        if !app.state.show_rename_dialog {
+            return;
+        }
+
+        egui::Window::new("名前変更")
+            .resizable(false)
+            .collapsible(false)
+            .anchor(egui::Align2::CENTER_CENTER, egui::Vec2::ZERO)
+            .show(ctx, |ui| {
+                ui.vertical(|ui| {
+                    if let Some(target_path) = &app.state.rename_target_path {
+                        ui.label(format!("元の名前: {}", target_path.file_name().unwrap_or_default().to_string_lossy()));
+                        ui.add_space(10.0);
+                        
+                        ui.label("新しい名前:");
+                        let text_edit = ui.text_edit_singleline(&mut app.state.rename_new_name);
+                        
+                        // ダイアログが開いたときにテキストにフォーカス
+                        if ui.memory(|mem| mem.everything_is_visible()) {
+                            text_edit.request_focus();
+                        }
+                        
+                        ui.add_space(10.0);
+                        
+                        ui.horizontal(|ui| {
+                            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                                if ui.button("キャンセル").clicked() {
+                                    app.state.show_rename_dialog = false;
+                                    app.state.rename_new_name.clear();
+                                    app.state.rename_target_path = None;
+                                }
+                                
+                                if ui.button("リネーム").clicked() || ctx.input(|i| i.key_pressed(egui::Key::Enter)) {
+                                    app.rename_item();
+                                }
+                            });
+                        });
+                    }
+                });
+                
+                // Escapeキーでダイアログを閉じる
+                if ctx.input(|i| i.key_pressed(egui::Key::Escape)) {
+                    app.state.show_rename_dialog = false;
+                    app.state.rename_new_name.clear();
+                    app.state.rename_target_path = None;
+                }
+            });
+    }
 } 

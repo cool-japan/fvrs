@@ -77,6 +77,7 @@ impl ArchiveHandler {
             ArchiveType::Lzh => Self::list_lzh_contents(file_path),
             ArchiveType::Tar => Self::list_tar_contents(file_path),
             ArchiveType::TarGz => Self::list_tar_gz_contents(file_path),
+            ArchiveType::Gz => Self::list_gz_contents(file_path),
             ArchiveType::SevenZ => Self::list_7z_contents(file_path),
             _ => Err(format!("未対応の圧縮形式: {:?}", archive_type)),
         }
@@ -169,7 +170,7 @@ impl ArchiveHandler {
         
         for entry_result in tar.entries().map_err(|e| format!("TAR読み込みエラー: {}", e))? {
             match entry_result {
-                Ok(entry) => {
+                Ok(mut entry) => {
                     let header = entry.header();
                     let path = entry.path().map_err(|e| format!("パス取得エラー: {}", e))?;
                     let name = path.to_string_lossy().to_string();
@@ -188,9 +189,16 @@ impl ArchiveHandler {
                         is_dir,
                         modified,
                     });
+                    
+                    // エントリの内容を完全に消費してブロック境界の問題を回避
+                    if !is_dir {
+                        let _ = std::io::copy(&mut entry, &mut std::io::sink());
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("TAR エントリ読み込みエラー: {}", e);
+                    // エラーの場合も処理を続行
+                    break;
                 }
             }
         }
@@ -208,7 +216,7 @@ impl ArchiveHandler {
         
         for entry_result in tar.entries().map_err(|e| format!("TAR.GZ読み込みエラー: {}", e))? {
             match entry_result {
-                Ok(entry) => {
+                Ok(mut entry) => {
                     let header = entry.header();
                     let path = entry.path().map_err(|e| format!("パス取得エラー: {}", e))?;
                     let name = path.to_string_lossy().to_string();
@@ -227,14 +235,42 @@ impl ArchiveHandler {
                         is_dir,
                         modified,
                     });
+                    
+                    // エントリの内容を完全に消費してブロック境界の問題を回避
+                    if !is_dir {
+                        let _ = std::io::copy(&mut entry, &mut std::io::sink());
+                    }
                 }
                 Err(e) => {
                     tracing::warn!("TAR.GZ エントリ読み込みエラー: {}", e);
+                    break;
                 }
             }
         }
         
         Ok(entries)
+    }
+
+    /// GZ ファイルの内容を一覧表示
+    fn list_gz_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+        // .gz単体ファイルは1つのファイルが圧縮されている
+        let file_name = file_path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("decompressed")
+            .to_string();
+        
+        let file_size = std::fs::metadata(file_path)
+            .map(|m| m.len())
+            .unwrap_or(0);
+        
+        Ok(vec![ArchiveEntry {
+            name: file_name.clone(),
+            path: PathBuf::from(&file_name),
+            size: 0, // 解凍後サイズは不明
+            compressed_size: file_size,
+            is_dir: false,
+            modified: None,
+        }])
     }
 
     /// 7Z ファイルの内容を一覧表示
@@ -269,6 +305,7 @@ impl ArchiveHandler {
             ArchiveType::Lzh => Self::extract_lzh(archive_path, extract_to),
             ArchiveType::Tar => Self::extract_tar(archive_path, extract_to),
             ArchiveType::TarGz => Self::extract_tar_gz(archive_path, extract_to),
+            ArchiveType::Gz => Self::extract_gz(archive_path, extract_to),
             ArchiveType::SevenZ => Self::extract_7z(archive_path, extract_to),
             _ => Err(format!("未対応の圧縮形式: {:?}", archive_type)),
         }
@@ -360,6 +397,26 @@ impl ArchiveHandler {
         let mut tar = tar::Archive::new(gz_decoder);
         
         tar.unpack(extract_to).map_err(|e| format!("TAR.GZ解凍エラー: {}", e))?;
+        
+        Ok(())
+    }
+
+    /// GZ ファイルを解凍
+    fn extract_gz(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
+        let file = File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let mut gz_decoder = flate2::read::GzDecoder::new(file);
+        
+        // 出力ファイル名を決定（.gz拡張子を除去）
+        let output_filename = archive_path.file_stem()
+            .and_then(|stem| stem.to_str())
+            .unwrap_or("decompressed");
+        let output_path = extract_to.join(output_filename);
+        
+        let mut output_file = File::create(&output_path)
+            .map_err(|e| format!("出力ファイル作成エラー: {}", e))?;
+        
+        std::io::copy(&mut gz_decoder, &mut output_file)
+            .map_err(|e| format!("GZ解凍エラー: {}", e))?;
         
         Ok(())
     }
