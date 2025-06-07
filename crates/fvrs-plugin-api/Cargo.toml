@@ -9,4 +9,5 @@ description = "Plugin API for FVRS"
 [dependencies]
 thiserror = { workspace = true }
 anyhow = { workspace = true }
-libloading = { workspace = true } 
+libloading = { workspace = true }
+chrono = { workspace = true } 

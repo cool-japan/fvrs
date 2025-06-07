@@ -18,7 +18,7 @@ use notify::event::ModifyKind;
 use md5;
 use hex;
 use std::cmp::min;
-use std::time::{Duration, SystemTime};
+use std::time::SystemTime;
 use std::collections::HashMap;
 use std::collections::HashSet;
 use glob;
@@ -26,12 +26,17 @@ use serde_json;
 use std::fs::File;
 use std::io::BufWriter;
 use notify::EventKind;
-use windows::Win32::Storage::FileSystem::*;
 use std::io::BufReader as StdBufReader;
 use tokio::io::BufReader as TokioBufReader;
 use windows::Win32::Storage::FileSystem::{GetFileAttributesW, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_SYSTEM, FILE_ATTRIBUTE_ARCHIVE};
 use std::os::windows::ffi::OsStrExt;
 use tokio::io::{AsyncReadExt, AsyncBufReadExt};
+use sha1::Digest;
+use sha2::{Sha256, Sha512};
+use blake3;
+use ripemd::Ripemd160;
+use std::io::Read;
+use windows::core::PCWSTR;
 // use base64;
 // use aes;
 // use cipher;
@@ -194,11 +199,11 @@ pub mod core {
         /// Create permissions from file metadata
         pub async fn from_path(path: &PathBuf) -> FsResult<Self> {
             let metadata = fs::metadata(path).await?;
-            let permissions = metadata.permissions();
+            let _permissions = metadata.permissions();
 
             #[cfg(unix)]
             {
-                let mode = permissions.mode();
+                let mode = _permissions.mode();
                 Ok(Self {
                     readable: mode & 0o444 != 0,
                     writable: mode & 0o222 != 0,
@@ -209,7 +214,8 @@ pub mod core {
 
             #[cfg(windows)]
             {
-                let attrs = unsafe { GetFileAttributesW(OsStr::new(path).encode_wide().collect::<Vec<u16>>().as_ptr() as *const u16) };
+                let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(Some(0)).collect();
+                let attrs = unsafe { GetFileAttributesW(PCWSTR(wide.as_ptr())) };
                 if attrs == u32::MAX {
                     return Err(FsError::Permission("Failed to get file attributes".to_string()));
                 }
@@ -226,7 +232,7 @@ pub mod core {
 
         /// Apply permissions to a file
         pub async fn apply(&self, path: &PathBuf) -> FsResult<()> {
-            let mut permissions = fs::metadata(path).await?.permissions();
+            let permissions = fs::metadata(path).await?.permissions();
 
             #[cfg(unix)]
             {
@@ -256,6 +262,8 @@ pub mod core {
     impl FileEntry {
         /// Get file permissions
         pub async fn get_permissions(&self) -> FsResult<FilePermissions> {
+            let metadata = fs::metadata(&self.path).await?;
+            let _permissions = metadata.permissions();
             FilePermissions::from_path(&self.path).await
         }
 
@@ -561,8 +569,6 @@ pub mod core {
     pub struct FileSystem {
         /// Current working directory
         current_dir: PathBuf,
-        /// File system event sender
-        event_sender: Option<mpsc::Sender<FsEvent>>,
         /// File system event receiver
         event_receiver: Option<mpsc::Receiver<FsEvent>>,
     }
@@ -571,8 +577,7 @@ pub mod core {
         /// Create a new FileSystem instance
         pub fn new() -> Self {
             Self {
-                current_dir: PathBuf::from("."),
-                event_sender: None,
+                current_dir: std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")),
                 event_receiver: None,
             }
         }
@@ -661,42 +666,19 @@ pub mod core {
         /// Start watching for file system events
         pub async fn watch_directory(&mut self, path: &PathBuf) -> FsResult<()> {
             let (tx, rx) = mpsc::channel();
-            self.event_sender = Some(tx);
             self.event_receiver = Some(rx);
-
             let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-                if let Ok(event) = res {
-                    match event.kind {
-                        notify::EventKind::Create(_) => {
-                            if let Some(path) = event.paths.first() {
-                                let _ = tx.send(FsEvent::from(event)).unwrap();
-                            }
+                match res {
+                    Ok(event) => {
+                        if let Some(_path) = event.paths.first() {
+                            let _ = tx.send(FsEvent::from(event));
                         }
-                        notify::EventKind::Modify(_) => {
-                            if let Some(path) = event.paths.first() {
-                                let _ = tx.send(FsEvent::from(event)).unwrap();
-                            }
-                        }
-                        notify::EventKind::Remove(_) => {
-                            if let Some(path) = event.paths.first() {
-                                let _ = tx.send(FsEvent::from(event)).unwrap();
-                            }
-                        }
-                        notify::EventKind::Modify(ModifyKind::Name(_)) => {
-                            if event.paths.len() >= 2 {
-                                let _ = tx.send(FsEvent::from(event)).unwrap();
-                            }
-                        }
-                        notify::EventKind::Access(_) => {
-                            if let Some(path) = event.paths.first() {
-                                let _ = tx.send(FsEvent::from(event)).unwrap();
-                            }
-                        }
-                        _ => {}
+                    }
+                    Err(_e) => {
+                        // Handle error
                     }
                 }
             })?;
-
             watcher.watch(path, RecursiveMode::Recursive)?;
             Ok(())
         }
@@ -813,60 +795,47 @@ pub mod core {
 
         /// Calculate hash of a file
         pub async fn calculate_hash(&self, path: &PathBuf, algorithm: HashAlgorithm) -> FsResult<HashResult> {
-            let start_time = std::time::Instant::now();
-            let mut file = fs::File::open(path).await?;
-            let metadata = file.metadata().await?;
-            let size = metadata.len();
+            let start_time = SystemTime::now();
+            let mut file = File::open(path)?;
+            let mut buffer = Vec::new();
+            file.read_to_end(&mut buffer)?;
+            let size = buffer.len() as u64;
 
             let hash = match algorithm {
                 HashAlgorithm::MD5 => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
-                    hex::encode(&md5::compute(&buffer)[..])
+                    let digest = md5::compute(&buffer);
+                    hex::encode(digest.0)
                 }
                 HashAlgorithm::SHA1 => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
                     let mut hasher = sha1::Sha1::new();
                     hasher.update(&buffer);
-                    let result = hasher.finalize();
-                    hex::encode(&result[..])
+                    hex::encode(hasher.finalize())
                 }
                 HashAlgorithm::SHA256 => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
-                    let mut hasher = sha2::Sha256::new();
+                    let mut hasher = Sha256::new();
                     hasher.update(&buffer);
-                    let result = hasher.finalize();
-                    hex::encode(&result[..])
+                    hex::encode(hasher.finalize())
                 }
                 HashAlgorithm::SHA512 => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
-                    let mut hasher = sha2::Sha512::new();
+                    let mut hasher = Sha512::new();
                     hasher.update(&buffer);
-                    let result = hasher.finalize();
-                    hex::encode(&result[..])
+                    hex::encode(hasher.finalize())
                 }
                 HashAlgorithm::BLAKE3 => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
                     let mut hasher = blake3::Hasher::new();
                     hasher.update(&buffer);
-                    let result = hasher.finalize();
-                    hex::encode(&result[..])
+                    hex::encode(hasher.finalize().as_bytes())
                 }
                 HashAlgorithm::RIPEMD160 => {
-                    let mut buffer = Vec::new();
-                    file.read_to_end(&mut buffer).await?;
-                    let mut hasher = ripemd::Ripemd160::new();
+                    let mut hasher = Ripemd160::new();
                     hasher.update(&buffer);
-                    let result = hasher.finalize();
-                    hex::encode(&result[..])
+                    hex::encode(hasher.finalize())
                 }
             };
 
-            let time_ms = start_time.elapsed().as_millis() as u64;
+            let end_time = SystemTime::now();
+            let duration = end_time.duration_since(start_time).unwrap();
+            let time_ms = duration.as_millis() as u64;
 
             Ok(HashResult {
                 algorithm,
@@ -885,19 +854,20 @@ pub mod core {
         /// Calculate hash of a directory (recursive)
         pub async fn calculate_directory_hash(&self, path: &PathBuf, algorithm: HashAlgorithm) -> FsResult<HashResult> {
             let start_time = std::time::Instant::now();
-            let mut hasher = match algorithm {
+            let hash = match algorithm {
                 HashAlgorithm::MD5 => {
-                    let mut hasher = md5::Context::new();
+                    let mut buffer = Vec::new();
                     for entry in WalkDir::new(path).into_iter().filter_map(|e| e.ok()) {
                         let path = entry.path();
                         if path.is_file() {
                             let mut file = fs::File::open(path).await?;
-                            let mut buffer = Vec::new();
-                            file.read_to_end(&mut buffer).await?;
-                            hasher.update(&buffer);
+                            let mut file_buffer = Vec::new();
+                            file.read_to_end(&mut file_buffer).await?;
+                            buffer.extend(file_buffer);
                         }
                     }
-                    hex::encode(&hasher.finalize()[..])
+                    let digest = md5::compute(&buffer);
+                    hex::encode(digest.0)
                 }
                 HashAlgorithm::SHA1 => {
                     let mut hasher = sha1::Sha1::new();
@@ -910,7 +880,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(&hasher.finalize()[..])
+                    hex::encode(hasher.finalize())
                 }
                 HashAlgorithm::SHA256 => {
                     let mut hasher = sha2::Sha256::new();
@@ -923,7 +893,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(&hasher.finalize()[..])
+                    hex::encode(hasher.finalize())
                 }
                 HashAlgorithm::SHA512 => {
                     let mut hasher = sha2::Sha512::new();
@@ -936,7 +906,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(&hasher.finalize()[..])
+                    hex::encode(hasher.finalize())
                 }
                 HashAlgorithm::BLAKE3 => {
                     let mut hasher = blake3::Hasher::new();
@@ -949,7 +919,7 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(&hasher.finalize()[..])
+                    hex::encode(hasher.finalize().as_bytes())
                 }
                 HashAlgorithm::RIPEMD160 => {
                     let mut hasher = ripemd::Ripemd160::new();
@@ -962,10 +932,9 @@ pub mod core {
                             hasher.update(&buffer);
                         }
                     }
-                    hex::encode(&hasher.finalize()[..])
+                    hex::encode(hasher.finalize())
                 }
             };
-
             let time_ms = start_time.elapsed().as_millis() as u64;
             let size = WalkDir::new(path)
                 .into_iter()
@@ -973,10 +942,9 @@ pub mod core {
                 .filter(|e| e.path().is_file())
                 .map(|e| e.metadata().map(|m| m.len()).unwrap_or(0))
                 .sum();
-
             Ok(HashResult {
                 algorithm,
-                hash: hasher,
+                hash,
                 size,
                 time_ms,
             })
@@ -1159,20 +1127,17 @@ pub mod core {
         }
 
         /// Start monitoring with settings
-        pub async fn start_monitoring_with_settings(&self, settings: MonitoringSettings) -> FsResult<()> {
+        pub async fn start_monitoring_with_settings(&mut self, settings: MonitoringSettings) -> FsResult<()> {
             let (tx, rx) = mpsc::channel();
-            self.event_sender = Some(tx);
             self.event_receiver = Some(rx);
-
-            let config = Config::default();
-            config.poll_interval(Duration::from_millis(settings.debounce_ms));
-
+            let settings_cloned = settings.clone();
             let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
                 if let Ok(event) = res {
-                    tx.send(FsEvent::from(event)).unwrap();
+                    if settings_cloned.filter.matches(&event.paths[0]) {
+                        let _ = tx.send(FsEvent::from(event));
+                    }
                 }
             })?;
-
             watcher.watch(&settings.path, if settings.recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive })?;
             Ok(())
         }
@@ -1195,12 +1160,40 @@ pub mod core {
             Ok(settings)
         }
     }
+
+    impl From<Event> for FsEvent {
+        fn from(event: Event) -> Self {
+            let event_type = match event.kind {
+                EventKind::Create(_) => FsEventType::Create,
+                EventKind::Modify(_) => FsEventType::Modify,
+                EventKind::Remove(_) => FsEventType::Remove,
+                EventKind::Access(_) => FsEventType::Access,
+                _ => FsEventType::Metadata,
+            };
+            let path = event.paths.first().cloned().unwrap_or_default();
+            let timestamp = Local::now();
+            let mut metadata = HashMap::new();
+            match event.kind {
+                EventKind::Modify(ModifyKind::Data(_)) => {
+                    metadata.insert("modification_type".to_string(), "data".to_string());
+                }
+                EventKind::Modify(ModifyKind::Metadata(_)) => {
+                    metadata.insert("modification_type".to_string(), "metadata".to_string());
+                }
+                _ => {}
+            }
+            Self {
+                event_type,
+                path,
+                timestamp,
+                metadata,
+            }
+        }
+    }
 }
 
 /// Module providing plugin system functionality
 pub mod plugin {
-    use super::*;
-
     /// Basic trait for plugins
     pub trait Plugin {
         /// Get plugin name

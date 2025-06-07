@@ -4,6 +4,7 @@
 
 use std::path::PathBuf;
 use thiserror::Error;
+use chrono;
 
 /// Error type for plugin operations
 #[derive(Error, Debug)]
@@ -27,11 +28,20 @@ pub trait Plugin {
     /// Get plugin version
     fn version(&self) -> &str;
     
+    /// Get the plugin description
+    fn description(&self) -> &str;
+    
+    /// Get the list of commands provided by this plugin
+    fn commands(&self) -> Vec<CommandSpec>;
+    
     /// Initialize the plugin
     fn initialize(&mut self) -> PluginResult<()>;
     
     /// Shutdown the plugin
     fn shutdown(&mut self) -> PluginResult<()>;
+    
+    /// Execute a command
+    fn run(&self, ctx: &mut CommandContext) -> PluginResult<()>;
 }
 
 /// Trait for file operation plugins
@@ -82,19 +92,4 @@ pub struct CommandSpec {
 pub struct CommandContext {
     pub current_path: PathBuf,
     pub selected_files: Vec<PathBuf>,
-}
-
-/// Plugin trait that all FVRS plugins must implement
-pub trait Plugin {
-    /// Get the plugin name
-    fn name(&self) -> &str;
-    
-    /// Get the plugin description
-    fn description(&self) -> &str;
-    
-    /// Get the list of commands provided by this plugin
-    fn commands(&self) -> Vec<CommandSpec>;
-    
-    /// Execute a command
-    fn run(&self, ctx: &mut CommandContext) -> Result<()>;
 } 
