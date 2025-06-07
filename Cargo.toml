@@ -2,6 +2,7 @@
 resolver = "2"
 members = [
     "crates/fvrs-core",
+    "crates/fvrs-cli",
     "crates/fvrs-gui-nwg",
     "crates/fvrs-gui-slint",
     "crates/fvrs-shell",
