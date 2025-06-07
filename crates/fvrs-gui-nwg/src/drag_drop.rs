@@ -13,14 +13,14 @@ pub enum DragDropError {
     InvalidOperation(String),
 }
 
-/// ドラッグ&ドロップの操作タイプ
+/// Drag & Drop operation type
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum DragOp {
     Copy,
     Move,
 }
 
-/// ドラッグ&ドロップの状態を管理する構造体
+/// Structure to manage drag & drop state
 pub struct DragDrop {
     source_path: Option<PathBuf>,
     operation: Option<DragOp>,
@@ -34,23 +34,23 @@ impl DragDrop {
         }
     }
     
-    /// ドラッグ開始
+    /// Start drag
     pub fn start_drag(&mut self, path: PathBuf, operation: DragOp) {
         self.source_path = Some(path);
         self.operation = Some(operation);
     }
     
-    /// ドラッグ終了
+    /// End drag
     pub fn end_drag(&mut self) {
         self.source_path = None;
         self.operation = None;
     }
     
-    /// ドロップ処理
+    /// Handle drop
     pub fn handle_drop(&self, target_path: &PathBuf) -> Result<(), DragDropError> {
         if let (Some(source), Some(operation)) = (&self.source_path, self.operation) {
             if source == target_path {
-                return Err(DragDropError::InvalidOperation("同じパスへのドロップはできません".into()));
+                return Err(DragDropError::InvalidOperation("Cannot drop to the same path".into()));
             }
             
             match operation {
@@ -75,18 +75,18 @@ impl DragDrop {
         Ok(())
     }
     
-    /// ドラッグ中かどうか
+    /// Whether dragging is in progress
     pub fn is_dragging(&self) -> bool {
         self.source_path.is_some()
     }
     
-    /// 現在の操作タイプを取得
+    /// Get current operation type
     pub fn current_operation(&self) -> Option<DragOp> {
         self.operation
     }
 }
 
-/// ディレクトリを再帰的にコピー
+/// Recursively copy directory
 fn copy_dir(src: &PathBuf, dest: &PathBuf) -> Result<(), DragDropError> {
     if !dest.exists() {
         fs::create_dir_all(dest)?;
@@ -107,12 +107,12 @@ fn copy_dir(src: &PathBuf, dest: &PathBuf) -> Result<(), DragDropError> {
     Ok(())
 }
 
-/// ドラッグ&ドロップのイベントハンドラを設定
+/// Set drag & drop event handler
 pub fn init_drag_drop(window: &nwg::Window, list_view: &nwg::ListView) -> Result<()> {
-    // ドラッグ開始
+    // Start drag
     nwg::bind_event_handler(&list_view.handle, move |evt, _evt_data, _handle| {
         if evt == nwg::Event::OnDragStart {
-            // ドラッグ開始時の処理
+            // Process at drag start
             let selected = list_view.selected_items();
             if !selected.is_empty() {
                 let path = PathBuf::from(selected[0].text());
@@ -122,25 +122,25 @@ pub fn init_drag_drop(window: &nwg::Window, list_view: &nwg::ListView) -> Result
                     DragOp::Copy
                 };
                 
-                // ドラッグ開始
+                // Start drag
                 let mut drag_drop = DragDrop::new();
                 drag_drop.start_drag(path, operation);
             }
         }
     })?;
     
-    // ドラッグ中
+    // While dragging
     nwg::bind_event_handler(&list_view.handle, move |evt, _evt_data, _handle| {
         if evt == nwg::Event::OnDragOver {
-            // ドラッグ中はカーソルを変更
+            // Change cursor while dragging
             nwg::set_cursor(nwg::Cursor::Drag);
         }
     })?;
     
-    // ドロップ
+    // Drop
     nwg::bind_event_handler(&list_view.handle, move |evt, _evt_data, _handle| {
         if evt == nwg::Event::OnDrop {
-            // ドロップ時の処理
+            // Process at drop
             let target = list_view.hit_test(nwg::get_cursor_pos()).unwrap();
             let target_path = PathBuf::from(target.text());
             
@@ -148,7 +148,7 @@ pub fn init_drag_drop(window: &nwg::Window, list_view: &nwg::ListView) -> Result
                 nwg::modal_info_message(window, "Error", &format!("Failed to handle drop: {}", e));
             }
             
-            // ドラッグ終了
+            // End drag
             drag_drop.end_drag();
         }
     })?;

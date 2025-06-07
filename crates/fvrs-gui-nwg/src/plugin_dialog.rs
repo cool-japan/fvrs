@@ -28,7 +28,7 @@ impl PluginDialog {
         let mut dialog = Self::default();
         dialog.build()?;
         
-        // プラグインリストのカラム設定
+        // Set columns for plugin list
         dialog.plugin_list.insert_column(nwg::InsertListViewColumn {
             index: Some(0),
             column: nwg::ListViewColumn {
@@ -152,11 +152,11 @@ impl PluginDialog {
     }
 }
 
-/// プラグイン設定ダイアログの初期化
+/// Initialize plugin settings dialog
 pub fn init_plugin_dialog(dialog: &PluginDialog, plugin_manager: Rc<RefCell<PluginManager>>) -> Result<()> {
     let dialog = Rc::new(RefCell::new(dialog.clone()));
     
-    // プラグインリストの選択変更
+    // Plugin list selection change
     let dialog_clone = dialog.clone();
     let plugin_manager_clone = plugin_manager.clone();
     nwg::bind_event_handler(&dialog.borrow().plugin_list.handle, move |evt, _evt_data, _handle| {
@@ -174,7 +174,7 @@ pub fn init_plugin_dialog(dialog: &PluginDialog, plugin_manager: Rc<RefCell<Plug
         }
     })?;
     
-    // 有効化チェックボックス
+    // Enable checkbox
     let dialog_clone = dialog.clone();
     let plugin_manager_clone = plugin_manager.clone();
     nwg::bind_event_handler(&dialog.borrow().enabled_checkbox.handle, move |evt, _evt_data, _handle| {
@@ -193,7 +193,7 @@ pub fn init_plugin_dialog(dialog: &PluginDialog, plugin_manager: Rc<RefCell<Plug
         }
     })?;
     
-    // 設定ボタン
+    // Settings button
     let dialog_clone = dialog.clone();
     let plugin_manager_clone = plugin_manager.clone();
     nwg::bind_event_handler(&dialog.borrow().settings_button.handle, move |evt, _evt_data, _handle| {
@@ -215,7 +215,7 @@ pub fn init_plugin_dialog(dialog: &PluginDialog, plugin_manager: Rc<RefCell<Plug
         }
     })?;
     
-    // 閉じるボタン
+    // Close button
     let dialog_clone = dialog.clone();
     nwg::bind_event_handler(&dialog.borrow().close_button.handle, move |evt, _evt_data, _handle| {
         if evt == nwg::Event::OnButtonClick {

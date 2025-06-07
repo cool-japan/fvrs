@@ -13,14 +13,14 @@ pub enum ClipboardError {
     InvalidOperation(String),
 }
 
-/// クリップボードの操作タイプ
+/// Clipboard operation type
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ClipboardOp {
     Copy,
     Cut,
 }
 
-/// クリップボードの状態を管理する構造体
+/// Structure to manage clipboard state
 pub struct Clipboard {
     operation: Option<ClipboardOp>,
     items: HashSet<PathBuf>,
@@ -34,24 +34,24 @@ impl Clipboard {
         }
     }
     
-    /// クリップボードにアイテムを設定
+    /// Set items to clipboard
     pub fn set_items(&mut self, items: HashSet<PathBuf>, operation: ClipboardOp) {
         self.operation = Some(operation);
         self.items = items;
     }
     
-    /// クリップボードの内容を取得
+    /// Get clipboard contents
     pub fn get_items(&self) -> Option<(&HashSet<PathBuf>, ClipboardOp)> {
         self.operation.map(|op| (&self.items, op))
     }
     
-    /// クリップボードをクリア
+    /// Clear clipboard
     pub fn clear(&mut self) {
         self.operation = None;
         self.items.clear();
     }
     
-    /// クリップボードの内容をペースト
+    /// Paste clipboard contents
     pub fn paste(&self, dest: &PathBuf) -> Result<(), ClipboardError> {
         if let Some((items, operation)) = self.get_items() {
             for source in items {
@@ -78,12 +78,12 @@ impl Clipboard {
             }
             Ok(())
         } else {
-            Err(ClipboardError::InvalidOperation("クリップボードが空です".into()))
+            Err(ClipboardError::InvalidOperation("Clipboard is empty".into()))
         }
     }
 }
 
-/// ディレクトリを再帰的にコピー
+/// Recursively copy directory
 fn copy_dir(src: &PathBuf, dest: &PathBuf) -> Result<(), ClipboardError> {
     if !dest.exists() {
         fs::create_dir_all(dest)?;

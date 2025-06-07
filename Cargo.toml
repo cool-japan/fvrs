@@ -1,4 +1,5 @@
 [workspace]
+resolver = "2"
 members = [
     "crates/fvrs-core",
     "crates/fvrs-gui-nwg",
