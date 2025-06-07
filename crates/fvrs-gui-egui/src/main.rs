@@ -3,13 +3,14 @@ mod utils;
 mod app;
 mod ui;
 mod archive;
+mod file_info;
 
 use std::path::PathBuf;
 use fvrs_core::core::FileEntry;
 
 use app::FileVisorApp;
 use state::{ViewMode, SortColumn};
-use ui::{FileListUI, DialogsUI, ShortcutHandler, FileViewerUI};
+use ui::{FileListUI, DialogsUI, ShortcutHandler, FileViewerUI, FileInfoDialog};
 
 impl eframe::App for FileVisorApp {
     fn update(&mut self, ctx: &egui::Context, _frame: &mut eframe::Frame) {
@@ -584,6 +585,9 @@ impl eframe::App for FileVisorApp {
         
         // リネームダイアログ
         DialogsUI::show_rename_dialog(ctx, self);
+        
+        // ファイル情報ダイアログ
+        FileInfoDialog::show(ctx, self);
         
         // ダイアログアクションの実行
         if delete_requested {

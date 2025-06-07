@@ -12,6 +12,8 @@ pub enum ArchiveType {
     TarBz2,
     Gz,
     SevenZ,
+    Rar,
+    Cab,
     Unknown,
 }
 
@@ -45,6 +47,8 @@ impl ArchiveHandler {
             "tbz2" | "tar.bz2" => ArchiveType::TarBz2,
             "gz" => ArchiveType::Gz,
             "7z" => ArchiveType::SevenZ,
+            "rar" => ArchiveType::Rar,
+            "cab" => ArchiveType::Cab,
             _ => {
                 // ファイル名全体をチェック（.tar.gz などの複合拡張子）
                 let file_name = file_path.file_name()
@@ -77,8 +81,11 @@ impl ArchiveHandler {
             ArchiveType::Lzh => Self::list_lzh_contents(file_path),
             ArchiveType::Tar => Self::list_tar_contents(file_path),
             ArchiveType::TarGz => Self::list_tar_gz_contents(file_path),
+            ArchiveType::TarBz2 => Self::list_tar_bz2_contents(file_path),
             ArchiveType::Gz => Self::list_gz_contents(file_path),
             ArchiveType::SevenZ => Self::list_7z_contents(file_path),
+            ArchiveType::Rar => Self::list_rar_contents(file_path),
+            ArchiveType::Cab => Self::list_cab_contents(file_path),
             _ => Err(format!("未対応の圧縮形式: {:?}", archive_type)),
         }
     }
@@ -251,6 +258,51 @@ impl ArchiveHandler {
         Ok(entries)
     }
 
+    /// TAR.BZ2 ファイルの内容を一覧表示
+    fn list_tar_bz2_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+        let file = File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let bz2_decoder = bzip2::read::BzDecoder::new(file);
+        let mut tar = tar::Archive::new(bz2_decoder);
+        
+        let mut entries = Vec::new();
+        
+        for entry_result in tar.entries().map_err(|e| format!("TAR.BZ2読み込みエラー: {}", e))? {
+            match entry_result {
+                Ok(mut entry) => {
+                    let header = entry.header();
+                    let path = entry.path().map_err(|e| format!("パス取得エラー: {}", e))?;
+                    let name = path.to_string_lossy().to_string();
+                    let size = header.size().unwrap_or(0);
+                    let is_dir = header.entry_type().is_dir();
+                    
+                    let modified = header.mtime().ok()
+                        .map(|ts| chrono::DateTime::from_timestamp(ts as i64, 0))
+                        .flatten();
+                    
+                    entries.push(ArchiveEntry {
+                        name,
+                        path: path.into_owned(),
+                        size,
+                        compressed_size: size, // 圧縮後サイズは取得困難
+                        is_dir,
+                        modified,
+                    });
+                    
+                    // エントリの内容を完全に消費してブロック境界の問題を回避
+                    if !is_dir {
+                        let _ = std::io::copy(&mut entry, &mut std::io::sink());
+                    }
+                }
+                Err(e) => {
+                    tracing::warn!("TAR.BZ2 エントリ読み込みエラー: {}", e);
+                    break;
+                }
+            }
+        }
+        
+        Ok(entries)
+    }
+
     /// GZ ファイルの内容を一覧表示
     fn list_gz_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
         // .gz単体ファイルは1つのファイルが圧縮されている
@@ -293,6 +345,88 @@ impl ArchiveHandler {
         }
     }
 
+    /// RAR ファイルの内容を一覧表示
+    fn list_rar_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+        use unrar::Archive as UnrarArchive;
+        
+        let mut entries = Vec::new();
+        
+        // unrarライブラリを使用してRARファイルを開いて一覧表示
+        let archive = UnrarArchive::new(file_path).open_for_listing()
+            .map_err(|e| format!("RAR読み込みエラー: {:?}", e))?;
+        
+        for entry_result in archive {
+            match entry_result {
+                Ok(entry) => {
+                    let name = entry.filename.to_string_lossy().to_string();
+                    let path = entry.filename.clone();
+                    let size = entry.unpacked_size;
+                    let compressed_size = entry.unpacked_size; // RARではcompressed_sizeは取得困難
+                    let is_dir = entry.is_directory();
+                    
+                    // unrarのファイル時刻はFileTimeで提供される
+                    let modified = None; // RARのfile_timeは単純な数値のため、解析が複雑
+                    
+                    entries.push(ArchiveEntry {
+                        name,
+                        path,
+                        size: size.into(),
+                        compressed_size: compressed_size.into(),
+                        is_dir,
+                        modified,
+                    });
+                }
+                Err(e) => {
+                    tracing::warn!("RAR エントリ読み込みエラー: {:?}", e);
+                }
+            }
+        }
+        
+        Ok(entries)
+    }
+
+    /// CAB ファイルの内容を一覧表示
+    fn list_cab_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
+        use cab::Cabinet;
+        
+        let mut entries = Vec::new();
+        
+        let file = File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let cabinet = Cabinet::new(file).map_err(|e| format!("CAB読み込みエラー: {:?}", e))?;
+        
+        // CABファイル内のフォルダとファイルを列挙
+        for folder in cabinet.folder_entries() {
+            for file_entry in folder.file_entries() {
+                let name = file_entry.name().to_string();
+                let path = PathBuf::from(&name);
+                let size = file_entry.uncompressed_size();
+                let compressed_size = size; // CABでは圧縮サイズの正確な取得が困難
+                let is_dir = false; // CABではディレクトリの概念が異なる
+                
+                // CABファイルの時刻情報を取得（簡略化）
+                let modified = file_entry.datetime()
+                    .and_then(|dt| {
+                        Some(chrono::NaiveDateTime::new(
+                            chrono::NaiveDate::from_ymd_opt(dt.year() as i32, dt.month() as u32, dt.day() as u32)?,
+                            chrono::NaiveTime::from_hms_opt(dt.hour() as u32, dt.minute() as u32, dt.second() as u32)?
+                        ))
+                    })
+                    .map(|ndt| chrono::DateTime::from_naive_utc_and_offset(ndt, chrono::Utc));
+                
+                entries.push(ArchiveEntry {
+                    name: name.clone(),
+                    path,
+                    size: size.into(),
+                    compressed_size: compressed_size.into(),
+                    is_dir,
+                    modified,
+                });
+            }
+        }
+        
+        Ok(entries)
+    }
+
     /// 圧縮ファイルを指定ディレクトリに解凍
     pub fn extract_archive(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
         let archive_type = Self::detect_archive_type(archive_path);
@@ -305,8 +439,11 @@ impl ArchiveHandler {
             ArchiveType::Lzh => Self::extract_lzh(archive_path, extract_to),
             ArchiveType::Tar => Self::extract_tar(archive_path, extract_to),
             ArchiveType::TarGz => Self::extract_tar_gz(archive_path, extract_to),
+            ArchiveType::TarBz2 => Self::extract_tar_bz2(archive_path, extract_to),
             ArchiveType::Gz => Self::extract_gz(archive_path, extract_to),
             ArchiveType::SevenZ => Self::extract_7z(archive_path, extract_to),
+            ArchiveType::Rar => Self::extract_rar(archive_path, extract_to),
+            ArchiveType::Cab => Self::extract_cab(archive_path, extract_to),
             _ => Err(format!("未対応の圧縮形式: {:?}", archive_type)),
         }
     }
@@ -401,6 +538,17 @@ impl ArchiveHandler {
         Ok(())
     }
 
+    /// TAR.BZ2 ファイルを解凍
+    fn extract_tar_bz2(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
+        let file = File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let bz2_decoder = bzip2::read::BzDecoder::new(file);
+        let mut tar = tar::Archive::new(bz2_decoder);
+        
+        tar.unpack(extract_to).map_err(|e| format!("TAR.BZ2解凍エラー: {}", e))?;
+        
+        Ok(())
+    }
+
     /// GZ ファイルを解凍
     fn extract_gz(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
         let file = File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
@@ -429,6 +577,97 @@ impl ArchiveHandler {
         Ok(())
     }
 
+    /// RAR ファイルを解凍
+    fn extract_rar(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
+        use unrar::Archive as UnrarArchive;
+        use std::fs;
+        
+        // 解凍先ディレクトリを作成
+        fs::create_dir_all(extract_to).map_err(|e| format!("ディレクトリ作成エラー: {}", e))?;
+        
+        // unrarライブラリを使用してRARファイルを開いて解凍
+        let archive = UnrarArchive::new(archive_path).open_for_processing()
+            .map_err(|e| format!("RAR読み込みエラー: {:?}", e))?;
+        
+        let mut current_archive = Some(archive);
+        
+        while let Some(archive) = current_archive {
+            current_archive = match archive.read_header() {
+                Ok(Some(archive_with_header)) => {
+                    let entry = archive_with_header.entry();
+                    let target_path = extract_to.join(&entry.filename);
+                    
+                    // ディレクトリの場合は作成
+                    if entry.is_directory() {
+                        fs::create_dir_all(&target_path)
+                            .map_err(|e| format!("ディレクトリ作成エラー: {}", e))?;
+                        Some(archive_with_header.skip().map_err(|e| format!("RARスキップエラー: {:?}", e))?)
+                    } else {
+                        // ファイルの場合は解凍
+                        if let Some(parent) = target_path.parent() {
+                            fs::create_dir_all(parent)
+                                .map_err(|e| format!("親ディレクトリ作成エラー: {}", e))?;
+                        }
+                        
+                        let next_archive = archive_with_header.extract_to(&target_path)
+                            .map_err(|e| format!("RAR解凍エラー: {:?}", e))?;
+                        Some(next_archive)
+                    }
+                }
+                Ok(None) => None,
+                Err(e) => return Err(format!("RARヘッダ読み込みエラー: {:?}", e)),
+            };
+        }
+        
+        Ok(())
+    }
+
+    /// CAB ファイルを解凍
+    fn extract_cab(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
+        use cab::Cabinet;
+        use std::fs;
+        
+        // 解凍先ディレクトリを作成
+        fs::create_dir_all(extract_to).map_err(|e| format!("ディレクトリ作成エラー: {}", e))?;
+        
+        let file = File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let cabinet = Cabinet::new(file).map_err(|e| format!("CAB読み込みエラー: {:?}", e))?;
+        
+        // まずファイル名のリストを作成
+        let mut file_list = Vec::new();
+        for folder in cabinet.folder_entries() {
+            for file_entry in folder.file_entries() {
+                file_list.push(file_entry.name().to_string());
+            }
+        }
+        
+        // 借用問題を解決するために新しいcabinetインスタンスを作成
+        let file2 = File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let mut cabinet2 = Cabinet::new(file2).map_err(|e| format!("CAB読み込みエラー: {:?}", e))?;
+        
+        // ファイルを解凍
+        for file_name in file_list {
+            let target_path = extract_to.join(&file_name);
+            
+            // 親ディレクトリを作成
+            if let Some(parent) = target_path.parent() {
+                fs::create_dir_all(parent)
+                    .map_err(|e| format!("親ディレクトリ作成エラー: {}", e))?;
+            }
+            
+            // ファイルを読み込んで書き出し
+            let mut reader = cabinet2.read_file(&file_name)
+                .map_err(|e| format!("CABファイル読み込みエラー: {:?}", e))?;
+            let mut output_file = fs::File::create(&target_path)
+                .map_err(|e| format!("出力ファイル作成エラー: {}", e))?;
+            
+            std::io::copy(&mut reader, &mut output_file)
+                .map_err(|e| format!("ファイル書き込みエラー: {}", e))?;
+        }
+        
+        Ok(())
+    }
+
     /// ファイル・フォルダを圧縮
     pub fn create_archive(
         source_paths: &[PathBuf], 
@@ -439,6 +678,10 @@ impl ArchiveHandler {
             ArchiveType::Zip => Self::create_zip(source_paths, archive_path),
             ArchiveType::Tar => Self::create_tar(source_paths, archive_path),
             ArchiveType::TarGz => Self::create_tar_gz(source_paths, archive_path),
+            ArchiveType::TarBz2 => Self::create_tar_bz2(source_paths, archive_path),
+            ArchiveType::Lzh => Err("LHA/LZH形式の作成は現在サポートされていません。解凍のみ対応しています。ZIP、TAR、またはTAR.GZ形式をご利用ください。".to_string()),
+            ArchiveType::Rar => Err("RAR形式の作成はライセンス制限により対応していません。解凍のみサポートしています。".to_string()),
+            ArchiveType::Cab => Err("CAB形式の作成は現在サポートされていません。解凍のみ対応しています。".to_string()),
             _ => Err(format!("作成未対応の圧縮形式: {:?}", archive_type)),
         }
     }
@@ -498,9 +741,19 @@ impl ArchiveHandler {
         
         for source_path in source_paths {
             if source_path.is_file() {
-                tar.append_path(source_path).map_err(|e| format!("TARファイル追加エラー: {}", e))?;
+                // ファイル名のみを使用して相対パスで追加
+                let file_name = source_path.file_name()
+                    .ok_or_else(|| "ファイル名を取得できません".to_string())?
+                    .to_string_lossy();
+                tar.append_path_with_name(source_path, &*file_name)
+                    .map_err(|e| format!("TARファイル追加エラー: {}", e))?;
             } else if source_path.is_dir() {
-                tar.append_dir_all(".", source_path).map_err(|e| format!("TARディレクトリ追加エラー: {}", e))?;
+                // ディレクトリの場合、ディレクトリ名を使用して相対パスで追加
+                let dir_name = source_path.file_name()
+                    .ok_or_else(|| "ディレクトリ名を取得できません".to_string())?
+                    .to_string_lossy();
+                tar.append_dir_all(&*dir_name, source_path)
+                    .map_err(|e| format!("TARディレクトリ追加エラー: {}", e))?;
             }
         }
         
@@ -517,13 +770,52 @@ impl ArchiveHandler {
         
         for source_path in source_paths {
             if source_path.is_file() {
-                tar.append_path(source_path).map_err(|e| format!("TAR.GZファイル追加エラー: {}", e))?;
+                // ファイル名のみを使用して相対パスで追加
+                let file_name = source_path.file_name()
+                    .ok_or_else(|| "ファイル名を取得できません".to_string())?
+                    .to_string_lossy();
+                tar.append_path_with_name(source_path, &*file_name)
+                    .map_err(|e| format!("TAR.GZファイル追加エラー: {}", e))?;
             } else if source_path.is_dir() {
-                tar.append_dir_all(".", source_path).map_err(|e| format!("TAR.GZディレクトリ追加エラー: {}", e))?;
+                // ディレクトリの場合、ディレクトリ名を使用して相対パスで追加
+                let dir_name = source_path.file_name()
+                    .ok_or_else(|| "ディレクトリ名を取得できません".to_string())?
+                    .to_string_lossy();
+                tar.append_dir_all(&*dir_name, source_path)
+                    .map_err(|e| format!("TAR.GZディレクトリ追加エラー: {}", e))?;
             }
         }
         
         tar.finish().map_err(|e| format!("TAR.GZ完了エラー: {}", e))?;
+        
+        Ok(())
+    }
+
+    /// TAR.BZ2 ファイルを作成
+    fn create_tar_bz2(source_paths: &[PathBuf], archive_path: &Path) -> Result<(), String> {
+        let file = File::create(archive_path).map_err(|e| format!("ファイル作成エラー: {}", e))?;
+        let bz2_encoder = bzip2::write::BzEncoder::new(file, bzip2::Compression::default());
+        let mut tar = tar::Builder::new(bz2_encoder);
+        
+        for source_path in source_paths {
+            if source_path.is_file() {
+                // ファイル名のみを使用して相対パスで追加
+                let file_name = source_path.file_name()
+                    .ok_or_else(|| "ファイル名を取得できません".to_string())?
+                    .to_string_lossy();
+                tar.append_path_with_name(source_path, &*file_name)
+                    .map_err(|e| format!("TAR.BZ2ファイル追加エラー: {}", e))?;
+            } else if source_path.is_dir() {
+                // ディレクトリの場合、ディレクトリ名を使用して相対パスで追加
+                let dir_name = source_path.file_name()
+                    .ok_or_else(|| "ディレクトリ名を取得できません".to_string())?
+                    .to_string_lossy();
+                tar.append_dir_all(&*dir_name, source_path)
+                    .map_err(|e| format!("TAR.BZ2ディレクトリ追加エラー: {}", e))?;
+            }
+        }
+        
+        tar.finish().map_err(|e| format!("TAR.BZ2完了エラー: {}", e))?;
         
         Ok(())
     }

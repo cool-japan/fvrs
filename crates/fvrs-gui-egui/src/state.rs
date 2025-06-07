@@ -54,6 +54,10 @@ pub struct AppState {
     pub unpack_destination: String,
     pub pack_filename: String,
     pub pack_format: ArchiveType,
+    
+    // ファイル情報ダイアログ
+    pub show_file_info_dialog: bool,
+    pub file_info_target: Option<PathBuf>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -155,6 +159,10 @@ impl Default for AppState {
             unpack_destination: String::new(),
             pack_filename: String::new(),
             pack_format: ArchiveType::Zip,
+            
+            // ファイル情報ダイアログ
+            show_file_info_dialog: false,
+            file_info_target: None,
         }
     }
 } 

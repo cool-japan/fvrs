@@ -36,6 +36,9 @@ delharc = "0.6"
 tar = "0.4"
 flate2 = "1.0"
 sevenz-rust = "0.6"
+unrar = "0.5"
+cab = "0.6"
+bzip2 = "0.4"
 
 [features]
 default = ["clipboard"]

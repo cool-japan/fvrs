@@ -308,8 +308,11 @@ impl ShortcutHandler {
 
     fn show_file_info(app: &mut FileVisorApp) {
         if let Some(selected) = app.state.selected_items.first() {
-            tracing::info!("ファイル情報: {:?}", selected);
-            // TODO: ファイル情報ダイアログを実装
+            app.state.file_info_target = Some(selected.clone());
+            app.state.show_file_info_dialog = true;
+            tracing::info!("ファイル情報ダイアログを表示: {:?}", selected);
+        } else {
+            tracing::warn!("ファイル情報を表示するファイルが選択されていません");
         }
     }
 
