@@ -3,11 +3,7 @@ resolver = "2"
 members = [
     "crates/fvrs-core",
     "crates/fvrs-cli",
-    "crates/fvrs-gui-nwg",
-    "crates/fvrs-gui-slint",
-    "crates/fvrs-shell",
-    "crates/fvrs-plugin-api",
-    "crates/fvrs-plugins",
+    "crates/fvrs-gui-egui",
 ]
 
 [workspace.package]
@@ -15,8 +11,9 @@ version = "0.1.0"
 edition = "2021"
 authors = ["FVRS Team"]
 license = "MIT OR Apache-2.0"
-repository = "https://github.com/cool-japan/fvrs"
-description = "FVRS Rust Suite - A modern file manager"
+repository = "https://github.com/fvrs/fvrs"
+homepage = "https://github.com/fvrs/fvrs"
+description = "File Version and Restore System - A powerful file management tool"
 
 [workspace.dependencies]
 tokio = { version = "1.36", features = ["full"] }
