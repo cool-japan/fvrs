@@ -1,23 +1,29 @@
-use fvrs_core::core::{FileSystem, MonitoringSettings, MonitoringFilter};
-use std::path::PathBuf;
+use fvrs_core::core::{FileSystem, MonitoringFilter, MonitoringSettings};
 use std::env;
+use std::path::PathBuf;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
     let args: Vec<String> = env::args().collect();
-    
+
     if args.len() < 2 {
         println!("FVRS - File System Monitoring Tool");
         println!("Usage:");
         println!("  {} list [path]        - List files in directory", args[0]);
-        println!("  {} monitor [path]     - Monitor directory for changes", args[0]);
-        println!("  {} search <pattern>   - Search for files matching pattern", args[0]);
+        println!(
+            "  {} monitor [path]     - Monitor directory for changes",
+            args[0]
+        );
+        println!(
+            "  {} search <pattern>   - Search for files matching pattern",
+            args[0]
+        );
         return Ok(());
     }
-    
+
     let command = &args[1];
     let mut fs = FileSystem::new();
-    
+
     match command.as_str() {
         "list" => {
             let path = if args.len() > 2 {
@@ -25,11 +31,11 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             } else {
                 std::env::current_dir()?
             };
-            
+
             println!("Listing files in: {}", path.display());
             println!("{:<30} {:<15} {:<20} Type", "Name", "Size", "Modified");
             println!("{:-<75}", "");
-            
+
             match fs.list_files(Some(path)).await {
                 Ok(entries) => {
                     for entry in entries {
@@ -38,11 +44,12 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                         } else {
                             format_size(entry.size)
                         };
-                        
+
                         let type_str = if entry.is_dir { "Directory" } else { "File" };
-                        
-                        println!("{:<30} {:<15} {:<20} {}", 
-                            entry.name, 
+
+                        println!(
+                            "{:<30} {:<15} {:<20} {}",
+                            entry.name,
                             size_str,
                             entry.modified.format("%Y-%m-%d %H:%M:%S"),
                             type_str
@@ -54,18 +61,18 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         "monitor" => {
             let path = if args.len() > 2 {
                 PathBuf::from(&args[2])
             } else {
                 std::env::current_dir()?
             };
-            
+
             println!("Monitoring: {}", path.display());
             println!("Press Ctrl+C to stop...");
             println!("{:-<60}", "");
-            
+
             let settings = MonitoringSettings {
                 path: path.clone(),
                 recursive: true,
@@ -73,33 +80,34 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 max_history: 1000,
                 debounce_ms: 100,
             };
-            
+
             if let Err(e) = fs.start_monitoring_with_settings(settings).await {
                 eprintln!("Error starting monitoring: {}", e);
                 return Ok(());
             }
-            
+
             // イベントを監視 (async recv — no polling)
             while let Some(event) = fs.next_event().await {
-                println!("[{}] {:?}: {}",
+                println!(
+                    "[{}] {:?}: {}",
                     event.timestamp.format("%H:%M:%S"),
                     event.event_type,
                     event.path.display()
                 );
             }
         }
-        
+
         "search" => {
             if args.len() < 3 {
                 eprintln!("Error: Pattern required for search command");
                 return Ok(());
             }
-            
+
             let pattern = &args[2];
-            
+
             println!("Searching for files matching: {}", pattern);
             println!("{:-<50}", "");
-            
+
             match fs.find_files(pattern).await {
                 Ok(entries) => {
                     if entries.is_empty() {
@@ -111,7 +119,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                             } else {
                                 format_size(entry.size)
                             };
-                            
+
                             println!("{} ({})", entry.path.display(), size_str);
                         }
                     }
@@ -121,13 +129,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 }
             }
         }
-        
+
         _ => {
             eprintln!("Unknown command: {}", command);
             eprintln!("Use 'list', 'monitor', or 'search'");
         }
     }
-    
+
     Ok(())
 }
 
@@ -135,15 +143,15 @@ fn format_size(size: u64) -> String {
     const UNITS: &[&str] = &["B", "KB", "MB", "GB", "TB"];
     let mut size = size as f64;
     let mut unit_index = 0;
-    
+
     while size >= 1024.0 && unit_index < UNITS.len() - 1 {
         size /= 1024.0;
         unit_index += 1;
     }
-    
+
     if unit_index == 0 {
         format!("{} {}", size as u64, UNITS[unit_index])
     } else {
         format!("{:.1} {}", size, UNITS[unit_index])
     }
-} 
+}

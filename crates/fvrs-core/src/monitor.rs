@@ -214,7 +214,11 @@ impl MonitoringHistory {
     }
 
     /// Get events within time range
-    pub fn get_events_in_range(&self, start: DateTime<Local>, end: DateTime<Local>) -> Vec<&FsEvent> {
+    pub fn get_events_in_range(
+        &self,
+        start: DateTime<Local>,
+        end: DateTime<Local>,
+    ) -> Vec<&FsEvent> {
         self.events
             .iter()
             .filter(|event| event.timestamp >= start && event.timestamp <= end)
@@ -242,8 +246,8 @@ impl MonitoringHistory {
     pub fn load_from_file(path: &PathBuf, max_events: usize) -> FsResult<Self> {
         let file = File::open(path)?;
         let reader = StdBufReader::new(file);
-        let events: Vec<FsEvent> = serde_json::from_reader(reader)
-            .map_err(|e| FsError::Serialization(e.to_string()))?;
+        let events: Vec<FsEvent> =
+            serde_json::from_reader(reader).map_err(|e| FsError::Serialization(e.to_string()))?;
 
         let mut history = Self::new(max_events);
         for event in events {
@@ -260,13 +264,14 @@ impl FileSystem {
     /// [`FileSystem::stop_watching`] is called or a new watch replaces it.
     pub async fn watch_directory(&mut self, path: &Path) -> FsResult<()> {
         let (tx, rx) = channel(EVENT_CHANNEL_CAPACITY);
-        let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                if !event.paths.is_empty() {
-                    forward_event(&tx, FsEvent::from(event));
+        let mut watcher =
+            notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    if !event.paths.is_empty() {
+                        forward_event(&tx, FsEvent::from(event));
+                    }
                 }
-            }
-        })?;
+            })?;
         watcher.watch(path, RecursiveMode::Recursive)?;
         self.event_receiver = Some(rx);
         self.watcher = Some(watcher);
@@ -285,7 +290,8 @@ impl FileSystem {
 
     /// Poll for a pending file system event without blocking
     pub fn try_next_event(&mut self) -> Option<FsEvent> {
-        self.event_receiver.as_mut()
+        self.event_receiver
+            .as_mut()
             .and_then(|rx| rx.try_recv().ok())
     }
 
@@ -299,27 +305,44 @@ impl FileSystem {
     ///
     /// The watcher is stored inside this `FileSystem` and stays alive until
     /// [`FileSystem::stop_watching`] is called or a new watch replaces it.
-    pub async fn start_monitoring_with_settings(&mut self, settings: MonitoringSettings) -> FsResult<()> {
+    pub async fn start_monitoring_with_settings(
+        &mut self,
+        settings: MonitoringSettings,
+    ) -> FsResult<()> {
         let (tx, rx) = channel(EVENT_CHANNEL_CAPACITY);
         let settings_cloned = settings.clone();
-        let mut watcher = notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
-            if let Ok(event) = res {
-                let matches = event.paths.first()
-                    .map(|path| settings_cloned.filter.matches(path))
-                    .unwrap_or(false);
-                if matches {
-                    forward_event(&tx, FsEvent::from(event));
+        let mut watcher =
+            notify::recommended_watcher(move |res: std::result::Result<Event, notify::Error>| {
+                if let Ok(event) = res {
+                    let matches = event
+                        .paths
+                        .first()
+                        .map(|path| settings_cloned.filter.matches(path))
+                        .unwrap_or(false);
+                    if matches {
+                        forward_event(&tx, FsEvent::from(event));
+                    }
                 }
-            }
-        })?;
-        watcher.watch(&settings.path, if settings.recursive { RecursiveMode::Recursive } else { RecursiveMode::NonRecursive })?;
+            })?;
+        watcher.watch(
+            &settings.path,
+            if settings.recursive {
+                RecursiveMode::Recursive
+            } else {
+                RecursiveMode::NonRecursive
+            },
+        )?;
         self.event_receiver = Some(rx);
         self.watcher = Some(watcher);
         Ok(())
     }
 
     /// Save monitoring settings to file
-    pub async fn save_monitoring_settings(&self, settings: &MonitoringSettings, path: &PathBuf) -> FsResult<()> {
+    pub async fn save_monitoring_settings(
+        &self,
+        settings: &MonitoringSettings,
+        path: &PathBuf,
+    ) -> FsResult<()> {
         let file = File::create(path)?;
         let writer = BufWriter::new(file);
         serde_json::to_writer_pretty(writer, settings)
@@ -331,8 +354,8 @@ impl FileSystem {
     pub async fn load_monitoring_settings(&self, path: &PathBuf) -> FsResult<MonitoringSettings> {
         let file = File::open(path)?;
         let reader = StdBufReader::new(file);
-        let settings: MonitoringSettings = serde_json::from_reader(reader)
-            .map_err(|e| FsError::Serialization(e.to_string()))?;
+        let settings: MonitoringSettings =
+            serde_json::from_reader(reader).map_err(|e| FsError::Serialization(e.to_string()))?;
         Ok(settings)
     }
 }

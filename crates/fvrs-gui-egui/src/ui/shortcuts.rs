@@ -8,17 +8,17 @@ impl ShortcutHandler {
     /// ショートカットキーを処理する
     pub fn handle_shortcuts(app: &mut FileVisorApp, ctx: &Context) {
         // ダイアログが表示されている間はショートカットキーを無効にする
-        if app.state.show_delete_dialog 
-            || app.state.show_shortcuts_dialog 
-            || app.state.show_create_file_dialog 
-            || app.state.show_create_folder_dialog 
+        if app.state.show_delete_dialog
+            || app.state.show_shortcuts_dialog
+            || app.state.show_create_file_dialog
+            || app.state.show_create_folder_dialog
             || app.state.show_unsaved_dialog
             || app.state.show_unpack_dialog
             || app.state.show_pack_dialog
-            || app.state.show_rename_dialog 
-                 {
-             return;
-         }
+            || app.state.show_rename_dialog
+        {
+            return;
+        }
 
         ctx.input(|i| {
             // 基本的なショートカット（ペインに関係なく動作）
@@ -34,12 +34,12 @@ impl ShortcutHandler {
             if i.modifiers.alt && i.key_pressed(Key::ArrowRight) {
                 Self::go_forward(app);
             }
-            
+
             // Tab キーでペイン切り替え
             if i.key_pressed(Key::Tab) && !i.modifiers.any() {
                 Self::switch_pane(app);
             }
-            
+
             // 矢印キーによるナビゲーション（アクティブペインでのみ）
             if app.state.active_pane == ActivePane::MainList {
                 if i.key_pressed(Key::ArrowUp) {
@@ -165,7 +165,7 @@ impl ShortcutHandler {
             app.show_pack_dialog();
         }
 
-                    if ctx.input(|i| i.key_pressed(Key::V)) {
+        if ctx.input(|i| i.key_pressed(Key::V)) {
             if let Some(selected_path) = app.state.selected_items.first() {
                 let full_path = selected_path.clone();
                 if crate::archive::ArchiveHandler::is_archive(&full_path) {
@@ -184,7 +184,7 @@ impl ShortcutHandler {
     }
 
     // ===== 基本操作 =====
-    
+
     fn refresh_directory(app: &mut FileVisorApp) {
         app.directory_cache.remove(&app.state.current_path);
         tracing::info!("ディレクトリを更新しました");
@@ -197,7 +197,7 @@ impl ShortcutHandler {
     fn go_forward(app: &mut FileVisorApp) {
         app.go_forward();
     }
-    
+
     fn switch_pane(app: &mut FileVisorApp) {
         app.state.active_pane = match app.state.active_pane {
             ActivePane::LeftSidebar => ActivePane::MainList,
@@ -205,7 +205,7 @@ impl ShortcutHandler {
         };
         tracing::info!("ペインを切り替えました: {:?}", app.state.active_pane);
     }
-    
+
     fn navigate_list_up(app: &mut FileVisorApp) {
         if let Some(current_index) = app.state.last_selected_index {
             if current_index > 0 {
@@ -217,7 +217,7 @@ impl ShortcutHandler {
             app.state.last_selected_index = Some(0);
         }
     }
-    
+
     fn navigate_list_down(app: &mut FileVisorApp) {
         if let Some(current_index) = app.state.last_selected_index {
             app.state.last_selected_index = Some(current_index + 1);
@@ -235,7 +235,10 @@ impl ShortcutHandler {
             // クリップボードに選択アイテムをコピー
             use crate::state::ClipboardOperation;
             app.state.clipboard = Some(ClipboardOperation::Copy(app.state.selected_items.clone()));
-            tracing::info!("{}個のアイテムをコピーしました", app.state.selected_items.len());
+            tracing::info!(
+                "{}個のアイテムをコピーしました",
+                app.state.selected_items.len()
+            );
         }
     }
 
@@ -244,7 +247,10 @@ impl ShortcutHandler {
             // クリップボードに選択アイテムを切り取り
             use crate::state::ClipboardOperation;
             app.state.clipboard = Some(ClipboardOperation::Cut(app.state.selected_items.clone()));
-            tracing::info!("{}個のアイテムを切り取りました", app.state.selected_items.len());
+            tracing::info!(
+                "{}個のアイテムを切り取りました",
+                app.state.selected_items.len()
+            );
         }
     }
 
@@ -333,12 +339,14 @@ impl ShortcutHandler {
 
     fn copy_full_path(app: &mut FileVisorApp) {
         if !app.state.selected_items.is_empty() {
-            let paths: Vec<String> = app.state.selected_items
+            let paths: Vec<String> = app
+                .state
+                .selected_items
                 .iter()
                 .map(|p| p.to_string_lossy().to_string())
                 .collect();
             let full_paths = paths.join("\n");
-            
+
             // システムクリップボードにコピー
             #[cfg(feature = "clipboard")]
             {
@@ -347,7 +355,7 @@ impl ShortcutHandler {
                     let _ = clipboard.set_text(&full_paths);
                 }
             }
-            
+
             tracing::info!("フルパスをコピーしました: {}", paths.len());
         }
     }
@@ -395,7 +403,7 @@ impl ShortcutHandler {
     }
 
     fn concatenate_files(_app: &mut FileVisorApp) {
-        tracing::info!("連結機能（未実装）");  
+        tracing::info!("連結機能（未実装）");
     }
 
     fn create_file(app: &mut FileVisorApp) {
@@ -438,4 +446,4 @@ impl ShortcutHandler {
         app.state.show_shortcuts_dialog = true;
         tracing::info!("ショートカットキー一覧を表示");
     }
-} 
+}

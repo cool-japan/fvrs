@@ -59,8 +59,14 @@ fn read_raw_names(path: &Path) -> Result<Vec<(Vec<u8>, bool)>, String> {
         let mut locator = [0u8; 20];
         if file.read_exact(&mut locator).is_ok() && locator[0..4] == ZIP64_LOCATOR_SIG {
             let zip64_eocd_offset = u64::from_le_bytes([
-                locator[8], locator[9], locator[10], locator[11], //
-                locator[12], locator[13], locator[14], locator[15],
+                locator[8],
+                locator[9],
+                locator[10],
+                locator[11], //
+                locator[12],
+                locator[13],
+                locator[14],
+                locator[15],
             ]);
             file.seek(SeekFrom::Start(zip64_eocd_offset))
                 .map_err(|e| format!("シークエラー: {}", e))?;
@@ -68,12 +74,24 @@ fn read_raw_names(path: &Path) -> Result<Vec<(Vec<u8>, bool)>, String> {
             file.read_exact(&mut zip64_eocd)
                 .map_err(|e| format!("Zip64 EOCD 読み込みエラー: {}", e))?;
             total_entries = u64::from_le_bytes([
-                zip64_eocd[32], zip64_eocd[33], zip64_eocd[34], zip64_eocd[35], //
-                zip64_eocd[36], zip64_eocd[37], zip64_eocd[38], zip64_eocd[39],
+                zip64_eocd[32],
+                zip64_eocd[33],
+                zip64_eocd[34],
+                zip64_eocd[35], //
+                zip64_eocd[36],
+                zip64_eocd[37],
+                zip64_eocd[38],
+                zip64_eocd[39],
             ]);
             cd_offset = u64::from_le_bytes([
-                zip64_eocd[48], zip64_eocd[49], zip64_eocd[50], zip64_eocd[51], //
-                zip64_eocd[52], zip64_eocd[53], zip64_eocd[54], zip64_eocd[55],
+                zip64_eocd[48],
+                zip64_eocd[49],
+                zip64_eocd[50],
+                zip64_eocd[51], //
+                zip64_eocd[52],
+                zip64_eocd[53],
+                zip64_eocd[54],
+                zip64_eocd[55],
             ]);
         }
     }

@@ -60,7 +60,10 @@ impl FileSystem {
     /// Set the current working directory
     pub async fn set_current_dir(&mut self, path: PathBuf) -> FsResult<()> {
         if !fs::try_exists(&path).await? {
-            return Err(FsError::InvalidPath(format!("Directory does not exist: {:?}", path)));
+            return Err(FsError::InvalidPath(format!(
+                "Directory does not exist: {:?}",
+                path
+            )));
         }
         self.current_dir = path;
         Ok(())
@@ -92,7 +95,8 @@ impl FileSystem {
                 is_dir: metadata.is_dir(),
                 created: DateTime::from(metadata.created()?),
                 modified: DateTime::from(metadata.modified()?),
-                extension: entry.path()
+                extension: entry
+                    .path()
                     .extension()
                     .and_then(|e| e.to_str())
                     .map(String::from),

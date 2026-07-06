@@ -47,28 +47,52 @@ impl eframe::App for FileVisorApp {
                         }
                     });
                     ui.menu_button("コピー・移動", |ui| {
-                        if ui.button("コピー").clicked() { ui.close(); }
-                        if ui.button("移動").clicked() { ui.close(); }
+                        if ui.button("コピー").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("移動").clicked() {
+                            ui.close();
+                        }
                     });
-                    if ui.button("属性の変更").clicked() { ui.close(); }
-                    if ui.button("名前の変更").clicked() { ui.close(); }
+                    if ui.button("属性の変更").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("名前の変更").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
                     if ui.button("削除").clicked() {
                         self.show_delete_confirmation();
                         ui.close();
                     }
-                    if ui.button("一括削除").clicked() { ui.close(); }
+                    if ui.button("一括削除").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("連結と分割").clicked() { ui.close(); }
+                    if ui.button("連結と分割").clicked() {
+                        ui.close();
+                    }
                     ui.menu_button("圧縮書庫ファイルの操作", |ui| {
-                        if ui.button("圧縮").clicked() { ui.close(); }
-                        if ui.button("展開").clicked() { ui.close(); }
+                        if ui.button("圧縮").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("展開").clicked() {
+                            ui.close();
+                        }
                     });
-                    if ui.button("シュレッダ").clicked() { ui.close(); }
-                    if ui.button("プロパティ").clicked() { ui.close(); }
+                    if ui.button("シュレッダ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("プロパティ").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("関連付け").clicked() { ui.close(); }
-                    if ui.button("名前を指定して実行").clicked() { ui.close(); }
+                    if ui.button("関連付け").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("名前を指定して実行").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
                     if ui.button("終了").clicked() {
                         ctx.send_viewport_cmd(egui::ViewportCommand::Close);
@@ -80,36 +104,70 @@ impl eframe::App for FileVisorApp {
 
                 // 編集メニュー
                 ui.menu_button("編集", |ui| {
-                    if ui.button("オブジェクトの切り取り").clicked() { ui.close(); }
-                    if ui.button("オブジェクトのコピー").clicked() { ui.close(); }
-                    if ui.button("オブジェクトの貼り付け").clicked() { ui.close(); }
-                    if ui.button("ショートカットの貼り付け").clicked() { ui.close(); }
+                    if ui.button("オブジェクトの切り取り").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("オブジェクトのコピー").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("オブジェクトの貼り付け").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("ショートカットの貼り付け").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("パス名をコピー").clicked() { ui.close(); }
+                    if ui.button("パス名をコピー").clicked() {
+                        ui.close();
+                    }
                     ui.menu_button("すべて選択・選択を反転", |ui| {
-                        if ui.button("すべて選択").clicked() { ui.close(); }
-                        if ui.button("選択を反転").clicked() { ui.close(); }
+                        if ui.button("すべて選択").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("選択を反転").clicked() {
+                            ui.close();
+                        }
                     });
                     ui.separator();
-                    if ui.button("フィルタ").clicked() { ui.close(); }
-                    if ui.button("一括選択").clicked() { ui.close(); }
+                    if ui.button("フィルタ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("一括選択").clicked() {
+                        ui.close();
+                    }
                 });
 
                 // ディスクメニュー
                 ui.menu_button("ディスク", |ui| {
-                    if ui.button("ディスクコピー").clicked() { ui.close(); }
-                    if ui.button("ボリュームラベル").clicked() { ui.close(); }
-                    if ui.button("ディスクフォーマット").clicked() { ui.close(); }
-                    if ui.button("チェックディスク").clicked() { ui.close(); }
+                    if ui.button("ディスクコピー").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("ボリュームラベル").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("ディスクフォーマット").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("チェックディスク").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
                     ui.menu_button("ディスクイメージの作成と復元", |ui| {
-                        if ui.button("イメージ作成").clicked() { ui.close(); }
-                        if ui.button("イメージ復元").clicked() { ui.close(); }
+                        if ui.button("イメージ作成").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("イメージ復元").clicked() {
+                            ui.close();
+                        }
                     });
                     ui.separator();
                     ui.menu_button("ネットワークの接続と切断", |ui| {
-                        if ui.button("ネットワーク接続").clicked() { ui.close(); }
-                        if ui.button("ネットワーク切断").clicked() { ui.close(); }
+                        if ui.button("ネットワーク接続").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("ネットワーク切断").clicked() {
+                            ui.close();
+                        }
                     });
                 });
 
@@ -121,24 +179,44 @@ impl eframe::App for FileVisorApp {
                         }
                         ui.close();
                     }
-                    if ui.button("指定のフォルダを開く").clicked() { ui.close(); }
-                    if ui.button("検索").clicked() { ui.close(); }
+                    if ui.button("指定のフォルダを開く").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("検索").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("システムフォルダ").clicked() { ui.close(); }
-                    if ui.button("ごみ箱を空にする").clicked() { ui.close(); }
+                    if ui.button("システムフォルダ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("ごみ箱を空にする").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("フォルダの同期").clicked() { ui.close(); }
-                    if ui.button("フォルダの同期スクリプト").clicked() { ui.close(); }
+                    if ui.button("フォルダの同期").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("フォルダの同期スクリプト").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("履歴").clicked() { ui.close(); }
+                    if ui.button("履歴").clicked() {
+                        ui.close();
+                    }
                 });
 
                 // 表示メニュー
                 ui.menu_button("表示", |ui| {
                     ui.menu_button("パネル・バー", |ui| {
-                        if ui.button("ツールバー").clicked() { ui.close(); }
-                        if ui.button("ステータスバー").clicked() { ui.close(); }
-                        if ui.button("アドレスバー").clicked() { ui.close(); }
+                        if ui.button("ツールバー").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("ステータスバー").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("アドレスバー").clicked() {
+                            ui.close();
+                        }
                     });
                     ui.menu_button("表示する種類やプロパティ", |ui| {
                         ui.radio_value(&mut self.state.view_mode, ViewMode::List, "リスト");
@@ -164,22 +242,38 @@ impl eframe::App for FileVisorApp {
                         }
                     });
                     ui.separator();
-                    if ui.button("アイコンの表示").clicked() { ui.close(); }
-                    if ui.button("サムネイルサイズ").clicked() { ui.close(); }
-                    if ui.button("基本の表示スタイルを更新").clicked() { ui.close(); }
+                    if ui.button("アイコンの表示").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("サムネイルサイズ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("基本の表示スタイルを更新").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("ファイル情報").clicked() { ui.close(); }
-                    if ui.button("ファイル容量の詳細").clicked() { ui.close(); }
-                    if ui.button("ドライブ情報").clicked() { ui.close(); }
+                    if ui.button("ファイル情報").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("ファイル容量の詳細").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("ドライブ情報").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
                     ui.checkbox(&mut self.state.show_hidden, "隠しファイルを表示");
                     ui.separator();
-                    if ui.button("ホットキーメニュー").clicked() { ui.close(); }
+                    if ui.button("ホットキーメニュー").clicked() {
+                        ui.close();
+                    }
                     if ui.button("ショートカットキー").clicked() {
                         self.state.show_shortcuts_dialog = true;
                         ui.close();
                     }
-                    if ui.button("デスクトップをツリー表示").clicked() { ui.close(); }
+                    if ui.button("デスクトップをツリー表示").clicked() {
+                        ui.close();
+                    }
                 });
 
                 // ツールメニュー
@@ -192,7 +286,9 @@ impl eframe::App for FileVisorApp {
                         }
                         ui.close();
                     }
-                    if ui.button("バイナリ編集").clicked() { ui.close(); }
+                    if ui.button("バイナリ編集").clicked() {
+                        ui.close();
+                    }
                     if ui.button("エディタで編集").clicked() {
                         if let Some(selected_file) = self.state.selected_items.first().cloned() {
                             if selected_file.is_file() {
@@ -202,19 +298,31 @@ impl eframe::App for FileVisorApp {
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("ファイルから文字列を検索").clicked() { ui.close(); }
-                    if ui.button("コマンドプロンプトを開く").clicked() { ui.close(); }
+                    if ui.button("ファイルから文字列を検索").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("コマンドプロンプトを開く").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("形式を指定してリスト出力").clicked() { ui.close(); }
+                    if ui.button("形式を指定してリスト出力").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
                     if ui.button("ショートカットキー").clicked() {
                         self.state.show_shortcuts_dialog = true;
                         ui.close();
                     }
-                    if ui.button("ショートカットメニュー").clicked() { ui.close(); }
+                    if ui.button("ショートカットメニュー").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("オプション").clicked() { ui.close(); }
-                    if ui.button("シェル拡張機能の設定").clicked() { ui.close(); }
+                    if ui.button("オプション").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("シェル拡張機能の設定").clicked() {
+                        ui.close();
+                    }
                 });
 
                 // ウィンドウメニュー
@@ -224,29 +332,57 @@ impl eframe::App for FileVisorApp {
                         ui.close();
                     }
                     ui.separator();
-                    if ui.button("新しいウィンドウ").clicked() { ui.close(); }
-                    if ui.button("新しいタブ").clicked() { ui.close(); }
-                    if ui.button("最近開いたタブ").clicked() { ui.close(); }
+                    if ui.button("新しいウィンドウ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("新しいタブ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("最近開いたタブ").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("タブグループ").clicked() { ui.close(); }
-                    if ui.button("タブを分離").clicked() { ui.close(); }
+                    if ui.button("タブグループ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("タブを分離").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
-                    if ui.button("前の・次のタブ").clicked() { ui.close(); }
-                    if ui.button("他のタブを閉じる").clicked() { ui.close(); }
+                    if ui.button("前の・次のタブ").clicked() {
+                        ui.close();
+                    }
+                    if ui.button("他のタブを閉じる").clicked() {
+                        ui.close();
+                    }
                     ui.separator();
                     ui.menu_button("並べて表示・他", |ui| {
-                        if ui.button("縦に並べて表示").clicked() { ui.close(); }
-                        if ui.button("横に並べて表示").clicked() { ui.close(); }
-                        if ui.button("重ねて表示").clicked() { ui.close(); }
-                        if ui.button("最小化").clicked() { ui.close(); }
+                        if ui.button("縦に並べて表示").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("横に並べて表示").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("重ねて表示").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("最小化").clicked() {
+                            ui.close();
+                        }
                     });
                     ui.separator();
                     ui.menu_button("全てのウィンドウ位置を保存・復帰", |ui| {
-                        if ui.button("位置を保存").clicked() { ui.close(); }
-                        if ui.button("位置を復帰").clicked() { ui.close(); }
+                        if ui.button("位置を保存").clicked() {
+                            ui.close();
+                        }
+                        if ui.button("位置を復帰").clicked() {
+                            ui.close();
+                        }
                     });
                     ui.separator();
-                    if ui.button("前の・次のウィンドウ").clicked() { ui.close(); }
+                    if ui.button("前の・次のウィンドウ").clicked() {
+                        ui.close();
+                    }
                 });
             });
         });
@@ -256,12 +392,19 @@ impl eframe::App for FileVisorApp {
             ui.horizontal(|ui| {
                 // ナビゲーションボタン
                 let back_enabled = self.state.history_position > 0;
-                let forward_enabled = self.state.history_position < self.state.navigation_history.len().saturating_sub(1);
+                let forward_enabled = self.state.history_position
+                    < self.state.navigation_history.len().saturating_sub(1);
 
-                if ui.add_enabled(back_enabled, egui::Button::new("←")).clicked() {
+                if ui
+                    .add_enabled(back_enabled, egui::Button::new("←"))
+                    .clicked()
+                {
                     self.go_back();
                 }
-                if ui.add_enabled(forward_enabled, egui::Button::new("→")).clicked() {
+                if ui
+                    .add_enabled(forward_enabled, egui::Button::new("→"))
+                    .clicked()
+                {
                     self.go_forward();
                 }
                 if ui.button("↑").clicked() {
@@ -276,8 +419,7 @@ impl eframe::App for FileVisorApp {
                 // アドレスバー
                 ui.label("パス:");
                 let response = ui.add(
-                    egui::TextEdit::singleline(&mut self.address_bar_text)
-                        .desired_width(300.0)
+                    egui::TextEdit::singleline(&mut self.address_bar_text).desired_width(300.0),
                 );
 
                 if response.lost_focus() && ui.input(|i| i.key_pressed(egui::Key::Enter)) {
@@ -301,7 +443,7 @@ impl eframe::App for FileVisorApp {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.state.search_query)
                         .desired_width(200.0)
-                        .hint_text("ファイル名で検索...")
+                        .hint_text("ファイル名で検索..."),
                 );
             });
         });
@@ -346,14 +488,17 @@ impl eframe::App for FileVisorApp {
                 }
 
                 ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                    if let Some(selected_count) = (!self.state.selected_items.is_empty()).then_some(self.state.selected_items.len()) {
+                    if let Some(selected_count) = (!self.state.selected_items.is_empty())
+                        .then_some(self.state.selected_items.len())
+                    {
                         ui.label(format!("🔹 {} 個選択", selected_count));
                         ui.separator();
                     }
 
                     // パフォーマンス情報
                     if !self.frame_time_history.is_empty() {
-                        let avg_frame_time = self.frame_time_history.iter().sum::<f32>() / self.frame_time_history.len() as f32;
+                        let avg_frame_time = self.frame_time_history.iter().sum::<f32>()
+                            / self.frame_time_history.len() as f32;
                         ui.label(format!("FPS: {:.1}", 1000.0 / avg_frame_time));
                     }
                 });
@@ -363,7 +508,9 @@ impl eframe::App for FileVisorApp {
         // メイン表示エリア（ファイルリスト）
         egui::CentralPanel::default().show(ui, |ui| {
             // 表示するディレクトリを決定（左ペインの選択があればそれを使用、なければ現在のパス）
-            let display_path = self.state.sidebar_selected_item
+            let display_path = self
+                .state
+                .sidebar_selected_item
                 .as_ref()
                 .unwrap_or(&self.state.current_path)
                 .clone();
@@ -399,7 +546,10 @@ impl eframe::App for FileVisorApp {
                         });
 
                         ui.add_space(10.0);
-                        ui.colored_label(egui::Color32::GRAY, "💡 ヒント: パスが存在するか、アクセス権限があるか確認してください");
+                        ui.colored_label(
+                            egui::Color32::GRAY,
+                            "💡 ヒント: パスが存在するか、アクセス権限があるか確認してください",
+                        );
                     });
                     return;
                 }
@@ -424,7 +574,7 @@ impl eframe::App for FileVisorApp {
             let mut sorted_entries = entries.clone();
             sorted_entries.sort_by(|a, b| {
                 match (a.is_dir, b.is_dir) {
-                    (true, false) => std::cmp::Ordering::Less,   // フォルダーが先
+                    (true, false) => std::cmp::Ordering::Less, // フォルダーが先
                     (false, true) => std::cmp::Ordering::Greater, // ファイルが後
                     _ => a.name.to_lowercase().cmp(&b.name.to_lowercase()), // 同じ種類なら名前順
                 }
@@ -436,8 +586,11 @@ impl eframe::App for FileVisorApp {
             let filtered_entries: Vec<&FileEntry> = all_entries
                 .iter()
                 .filter(|entry| {
-                    search_query.is_empty() ||
-                    entry.name.to_lowercase().contains(&search_query.to_lowercase())
+                    search_query.is_empty()
+                        || entry
+                            .name
+                            .to_lowercase()
+                            .contains(&search_query.to_lowercase())
                 })
                 .collect();
 
@@ -588,15 +741,23 @@ impl eframe::App for FileVisorApp {
         let mut cancel_requested_unsaved = false;
 
         if self.state.show_unsaved_dialog {
-            let file_name = self.state.viewed_file_path
+            let file_name = self
+                .state
+                .viewed_file_path
                 .as_ref()
                 .and_then(|p| p.file_name())
                 .and_then(|n| n.to_str())
                 .unwrap_or("不明なファイル");
 
-            let mut save_callback = || { save_requested = true; };
-            let mut discard_callback = || { discard_requested = true; };
-            let mut cancel_callback = || { cancel_requested_unsaved = true; };
+            let mut save_callback = || {
+                save_requested = true;
+            };
+            let mut discard_callback = || {
+                discard_requested = true;
+            };
+            let mut cancel_callback = || {
+                cancel_requested_unsaved = true;
+            };
 
             DialogsUI::show_unsaved_changes_dialog(
                 ctx,

@@ -51,8 +51,8 @@ fn dos_datetime_to_unix(time: u16, date: u16) -> Option<i64> {
     let hour = u32::from((time >> 11) & 0x1F);
     let minute = u32::from((time >> 5) & 0x3F);
     let second = u32::from(time & 0x1F) * 2;
-    let naive = chrono::NaiveDate::from_ymd_opt(year, month, day)?
-        .and_hms_opt(hour, minute, second)?;
+    let naive =
+        chrono::NaiveDate::from_ymd_opt(year, month, day)?.and_hms_opt(hour, minute, second)?;
     Some(naive.and_utc().timestamp())
 }
 

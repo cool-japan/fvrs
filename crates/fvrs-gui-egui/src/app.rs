@@ -1,9 +1,9 @@
+use crate::archive::{ArchiveHandler, ArchiveType};
+use crate::state::{AppState, DragState, FileOperation, SortColumn};
+use crate::utils::{MountCache, setup_japanese_fonts};
+use fvrs_core::core::FileEntry;
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use fvrs_core::core::FileEntry;
-use crate::state::{AppState, DragState, FileOperation, SortColumn};
-use crate::utils::{setup_japanese_fonts, MountCache};
-use crate::archive::{ArchiveHandler, ArchiveType};
 
 pub struct FileVisorApp {
     pub state: AppState,
@@ -12,18 +12,18 @@ pub struct FileVisorApp {
     pub directory_cache: HashMap<PathBuf, Vec<FileEntry>>,
     pub mount_cache: MountCache,
     pub _thumbnail_cache: HashMap<PathBuf, Vec<u8>>,
-    
+
     // UI状態
     pub address_bar_text: String,
     pub _search_active: bool,
     pub _context_menu_pos: Option<egui::Pos2>,
     pub _drag_state: DragState,
-    
+
     // 高度な機能
     pub _file_watcher: Option<tokio::sync::mpsc::Receiver<PathBuf>>,
     pub _undo_stack: Vec<FileOperation>,
     pub _redo_stack: Vec<FileOperation>,
-    
+
     // パフォーマンス監視
     pub frame_time_history: VecDeque<f32>,
     pub _memory_usage: usize,
@@ -33,13 +33,14 @@ impl FileVisorApp {
     pub fn new(cc: &eframe::CreationContext<'_>) -> Self {
         // ログ設定（既に初期化されている場合はスキップ）
         let _ = tracing_subscriber::fmt::try_init();
-        
+
         // 日本語フォント設定
         setup_japanese_fonts(&cc.egui_ctx);
-        
+
         // 状態復元の試行
         let state = if let Some(storage) = cc.storage {
-            storage.get_string("app_state")
+            storage
+                .get_string("app_state")
                 .and_then(|s| serde_json::from_str(&s).ok())
                 .unwrap_or_default()
         } else {
@@ -70,18 +71,18 @@ impl FileVisorApp {
             if !path.exists() {
                 return Err(format!("パスが存在しません: {}", path.display()));
             }
-            
+
             if !path.is_dir() {
                 return Err(format!("ディレクトリではありません: {}", path.display()));
             }
 
             // 高速なディレクトリ読み込み（直接実装）
             const MAX_ENTRIES: usize = 1000;
-            
+
             match std::fs::read_dir(path) {
                 Ok(entries) => {
                     let mut file_entries = Vec::new();
-                    
+
                     // 親ディレクトリエントリを追加
                     if path.parent().is_some() {
                         file_entries.push(FileEntry {
@@ -94,7 +95,7 @@ impl FileVisorApp {
                             extension: None,
                         });
                     }
-                    
+
                     // エントリを効率的に処理
                     let dir_entries: Vec<_> = entries
                         .filter_map(|entry| entry.ok())
@@ -105,20 +106,26 @@ impl FileVisorApp {
                             self.state.show_hidden || !name.starts_with('.')
                         })
                         .collect();
-                    
+
                     for entry in dir_entries {
                         let path = entry.path();
                         let name = entry.file_name().to_string_lossy().to_string();
-                        
+
                         if let Ok(metadata) = entry.metadata() {
-                            let size = if metadata.is_file() { metadata.len() } else { 0 };
-                            let created = metadata.created()
+                            let size = if metadata.is_file() {
+                                metadata.len()
+                            } else {
+                                0
+                            };
+                            let created = metadata
+                                .created()
                                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
                                 .into();
-                            let modified = metadata.modified()
+                            let modified = metadata
+                                .modified()
                                 .unwrap_or(std::time::SystemTime::UNIX_EPOCH)
                                 .into();
-                            
+
                             file_entries.push(FileEntry {
                                 name,
                                 path: path.clone(),
@@ -126,7 +133,8 @@ impl FileVisorApp {
                                 is_dir: metadata.is_dir(),
                                 created,
                                 modified,
-                                extension: path.extension()
+                                extension: path
+                                    .extension()
                                     .and_then(|ext| ext.to_str())
                                     .map(|s| s.to_string()),
                             });
@@ -135,17 +143,25 @@ impl FileVisorApp {
 
                     // ソート適用
                     self.sort_entries(&mut file_entries);
-                    self.directory_cache.insert(path.to_path_buf(), file_entries);
+                    self.directory_cache
+                        .insert(path.to_path_buf(), file_entries);
                 }
                 Err(e) => {
-                    return Err(format!("ディレクトリアクセスエラー: {} ({})", e, path.display()));
+                    return Err(format!(
+                        "ディレクトリアクセスエラー: {} ({})",
+                        e,
+                        path.display()
+                    ));
                 }
             }
         }
-        
-        self.directory_cache
-            .get(path)
-            .ok_or_else(|| format!("ディレクトリキャッシュの取得に失敗しました: {}", path.display()))
+
+        self.directory_cache.get(path).ok_or_else(|| {
+            format!(
+                "ディレクトリキャッシュの取得に失敗しました: {}",
+                path.display()
+            )
+        })
     }
 
     /// ファイルソート
@@ -183,12 +199,14 @@ impl FileVisorApp {
         if path.exists() && path.is_dir() {
             // 履歴管理
             if self.state.history_position < self.state.navigation_history.len() {
-                self.state.navigation_history.truncate(self.state.history_position + 1);
+                self.state
+                    .navigation_history
+                    .truncate(self.state.history_position + 1);
             }
-            
+
             self.state.navigation_history.push_back(path.clone());
             self.state.history_position = self.state.navigation_history.len().saturating_sub(1);
-            
+
             // 履歴サイズ制限
             if self.state.navigation_history.len() > 100 {
                 self.state.navigation_history.pop_front();
@@ -205,7 +223,11 @@ impl FileVisorApp {
     pub fn go_back(&mut self) {
         if self.state.history_position > 0 {
             self.state.history_position -= 1;
-            if let Some(path) = self.state.navigation_history.get(self.state.history_position) {
+            if let Some(path) = self
+                .state
+                .navigation_history
+                .get(self.state.history_position)
+            {
                 self.state.current_path = path.clone();
                 self.address_bar_text = self.state.current_path.to_string_lossy().to_string();
                 self.state.selected_items.clear();
@@ -217,7 +239,11 @@ impl FileVisorApp {
     pub fn go_forward(&mut self) {
         if self.state.history_position < self.state.navigation_history.len().saturating_sub(1) {
             self.state.history_position += 1;
-            if let Some(path) = self.state.navigation_history.get(self.state.history_position) {
+            if let Some(path) = self
+                .state
+                .navigation_history
+                .get(self.state.history_position)
+            {
                 self.state.current_path = path.clone();
                 self.address_bar_text = self.state.current_path.to_string_lossy().to_string();
                 self.state.selected_items.clear();
@@ -262,7 +288,7 @@ impl FileVisorApp {
                 }
             }
         }
-        
+
         // 状態をクリア
         self.directory_cache.remove(&self.state.current_path);
         self.state.selected_items.clear();
@@ -274,25 +300,25 @@ impl FileVisorApp {
     /// 新規ファイル作成
     pub fn create_new_file(&mut self, file_name: &str) {
         let new_file_path = self.state.current_path.join(file_name);
-        
+
         // ファイルが既に存在するかチェック
         if new_file_path.exists() {
             tracing::error!("ファイルが既に存在します: {:?}", new_file_path);
             return;
         }
-        
+
         // 標準ライブラリを使用してファイル作成
         match std::fs::write(&new_file_path, "") {
             Ok(_) => {
                 tracing::info!("新規ファイルを作成しました: {:?}", new_file_path);
                 // ディレクトリキャッシュを更新
                 self.directory_cache.remove(&self.state.current_path);
-                
+
                 // 作成したファイルを選択状態にする
                 self.state.selected_items.clear();
                 self.state.selected_items.push(new_file_path.clone());
                 self.state.last_selected_index = None;
-                
+
                 // ダイアログを閉じる
                 self.state.show_create_file_dialog = false;
                 self.state.new_file_name.clear();
@@ -302,29 +328,29 @@ impl FileVisorApp {
             }
         }
     }
-    
+
     /// 新規フォルダ作成（新規フォルダダイアログから呼ばれる）
     pub fn create_new_folder(&mut self, folder_name: &str) {
         let new_folder_path = self.state.current_path.join(folder_name);
-        
+
         // フォルダが既に存在するかチェック
         if new_folder_path.exists() {
             tracing::error!("フォルダが既に存在します: {:?}", new_folder_path);
             return;
         }
-        
+
         // 標準ライブラリを使用してフォルダ作成
         match std::fs::create_dir(&new_folder_path) {
             Ok(_) => {
                 tracing::info!("新規フォルダを作成しました: {:?}", new_folder_path);
                 // ディレクトリキャッシュを更新
                 self.directory_cache.remove(&self.state.current_path);
-                
+
                 // 作成したフォルダを選択状態にする
                 self.state.selected_items.clear();
                 self.state.selected_items.push(new_folder_path.clone());
                 self.state.last_selected_index = None;
-                
+
                 // ダイアログを閉じる
                 self.state.show_create_folder_dialog = false;
                 self.state.new_folder_name.clear();
@@ -342,7 +368,8 @@ impl FileVisorApp {
             let full_path = selected_path.clone();
             if ArchiveHandler::is_archive(&full_path) {
                 self.state.current_archive = Some(full_path);
-                self.state.unpack_destination = self.state.current_path.to_string_lossy().to_string();
+                self.state.unpack_destination =
+                    self.state.current_path.to_string_lossy().to_string();
                 self.state.show_unpack_dialog = true;
             } else {
                 // self.state.status_message = "選択されたファイルは圧縮ファイルではありません".to_string();
@@ -382,13 +409,17 @@ impl FileVisorApp {
     pub fn extract_archive(&mut self) {
         if let Some(archive_path) = &self.state.current_archive.clone() {
             let destination = PathBuf::from(&self.state.unpack_destination);
-            
+
             match ArchiveHandler::extract_archive(archive_path, &destination) {
                 Ok(()) => {
                     // self.state.status_message = format!("解凍完了: {}", destination.display());
                     self.state.show_unpack_dialog = false;
                     self.reload_current_directory();
-                    tracing::info!("圧縮ファイルを解凍しました: {:?} -> {:?}", archive_path, destination);
+                    tracing::info!(
+                        "圧縮ファイルを解凍しました: {:?} -> {:?}",
+                        archive_path,
+                        destination
+                    );
                 }
                 Err(e) => {
                     // self.state.status_message = format!("解凍エラー: {}", e);
@@ -408,13 +439,21 @@ impl FileVisorApp {
         }
 
         let archive_path = self.state.current_path.join(&self.state.pack_filename);
-        
-        match ArchiveHandler::create_archive(&selected_paths, &archive_path, self.state.pack_format.clone()) {
+
+        match ArchiveHandler::create_archive(
+            &selected_paths,
+            &archive_path,
+            self.state.pack_format.clone(),
+        ) {
             Ok(()) => {
                 // self.state.status_message = format!("圧縮完了: {}", archive_path.display());
                 self.state.show_pack_dialog = false;
                 self.reload_current_directory();
-                tracing::info!("ファイルを圧縮しました: {:?} -> {:?}", selected_paths, archive_path);
+                tracing::info!(
+                    "ファイルを圧縮しました: {:?} -> {:?}",
+                    selected_paths,
+                    archive_path
+                );
             }
             Err(e) => {
                 // self.state.status_message = format!("圧縮エラー: {}", e);
@@ -429,25 +468,26 @@ impl FileVisorApp {
         self.state.archive_entries.clear();
         self.state.current_archive = None;
     }
-    
+
     /// 現在のディレクトリをリロード
     pub fn reload_current_directory(&mut self) {
         self.directory_cache.remove(&self.state.current_path);
         // キャッシュをクリアすることで次回表示時に再読み込みされる
     }
-    
+
     /// リネームダイアログを表示
     pub fn show_rename_dialog(&mut self) {
         if let Some(selected_path) = self.state.selected_items.first() {
             self.state.rename_target_path = Some(selected_path.clone());
-            self.state.rename_new_name = selected_path.file_name()
+            self.state.rename_new_name = selected_path
+                .file_name()
                 .and_then(|name| name.to_str())
                 .unwrap_or("")
                 .to_string();
             self.state.show_rename_dialog = true;
         }
     }
-    
+
     /// ファイル・フォルダをリネーム
     pub fn rename_item(&mut self) {
         if let Some(old_path) = &self.state.rename_target_path.clone() {
@@ -455,20 +495,26 @@ impl FileVisorApp {
             if new_name.is_empty() {
                 return;
             }
-            
-            let new_path = old_path.parent()
+
+            let new_path = old_path
+                .parent()
                 .map(|parent| parent.join(new_name))
                 .unwrap_or_else(|| PathBuf::from(new_name));
-            
+
             match std::fs::rename(old_path, &new_path) {
                 Ok(()) => {
                     tracing::info!("リネーム完了: {:?} -> {:?}", old_path, new_path);
-                    
+
                     // 選択アイテムを更新
-                    if let Some(index) = self.state.selected_items.iter().position(|path| path == old_path) {
+                    if let Some(index) = self
+                        .state
+                        .selected_items
+                        .iter()
+                        .position(|path| path == old_path)
+                    {
                         self.state.selected_items[index] = new_path;
                     }
-                    
+
                     self.state.show_rename_dialog = false;
                     self.state.rename_new_name.clear();
                     self.state.rename_target_path = None;
@@ -480,4 +526,4 @@ impl FileVisorApp {
             }
         }
     }
-} 
+}

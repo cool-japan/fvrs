@@ -7,14 +7,14 @@ use tokio::fs;
 
 #[cfg(windows)]
 use std::ffi::OsStr;
-#[cfg(windows)]
-use std::os::windows::ffi::OsStrExt;
 #[cfg(unix)]
 use std::os::unix::fs::PermissionsExt;
 #[cfg(windows)]
+use std::os::windows::ffi::OsStrExt;
+#[cfg(windows)]
 use windows::Win32::Storage::FileSystem::{
-    GetFileAttributesW, FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY,
-    FILE_ATTRIBUTE_SYSTEM,
+    FILE_ATTRIBUTE_ARCHIVE, FILE_ATTRIBUTE_HIDDEN, FILE_ATTRIBUTE_READONLY, FILE_ATTRIBUTE_SYSTEM,
+    GetFileAttributesW,
 };
 #[cfg(windows)]
 use windows::core::PCWSTR;
@@ -86,7 +86,9 @@ impl FilePermissions {
             let wide: Vec<u16> = OsStr::new(path).encode_wide().chain(Some(0)).collect();
             let attrs = unsafe { GetFileAttributesW(PCWSTR(wide.as_ptr())) };
             if attrs == u32::MAX {
-                return Err(FsError::Permission("Failed to get file attributes".to_string()));
+                return Err(FsError::Permission(
+                    "Failed to get file attributes".to_string(),
+                ));
             }
             Ok(Self {
                 readable: true,

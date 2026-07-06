@@ -45,11 +45,11 @@ impl FileSystem {
             Regex::new(&options.pattern)
         } else {
             Regex::new(&format!("(?i){}", options.pattern))
-        }.map_err(|e| FsError::InvalidRegex(e.to_string()))?;
+        }
+        .map_err(|e| FsError::InvalidRegex(e.to_string()))?;
 
         let mut results = Vec::new();
-        let mut walker = WalkDir::new(&self.current_dir)
-            .min_depth(1);
+        let mut walker = WalkDir::new(&self.current_dir).min_depth(1);
 
         if let Some(max_depth) = options.max_depth {
             walker = walker.max_depth(max_depth);
@@ -84,9 +84,7 @@ impl FileSystem {
                         is_dir: metadata.is_dir(),
                         created: DateTime::from(metadata.created()?),
                         modified: DateTime::from(metadata.modified()?),
-                        extension: path.extension()
-                            .and_then(|e| e.to_str())
-                            .map(String::from),
+                        extension: path.extension().and_then(|e| e.to_str()).map(String::from),
                     });
                 }
                 continue;
@@ -104,7 +102,8 @@ impl FileSystem {
                                 is_dir: metadata.is_dir(),
                                 created: DateTime::from(metadata.created()?),
                                 modified: DateTime::from(metadata.modified()?),
-                                extension: path.extension()
+                                extension: path
+                                    .extension()
                                     .and_then(|e| e.to_str())
                                     .map(String::from),
                             });

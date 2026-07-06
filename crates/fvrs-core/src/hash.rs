@@ -101,7 +101,11 @@ impl HashAlgorithm {
 
 impl FileSystem {
     /// Calculate hash of a file
-    pub async fn calculate_hash(&self, path: &PathBuf, algorithm: HashAlgorithm) -> FsResult<HashResult> {
+    pub async fn calculate_hash(
+        &self,
+        path: &PathBuf,
+        algorithm: HashAlgorithm,
+    ) -> FsResult<HashResult> {
         let start_time = SystemTime::now();
         let mut file = File::open(path)?;
         let mut buffer = Vec::new();
@@ -113,7 +117,9 @@ impl FileSystem {
         let hash = hasher.finalize_hex();
 
         let end_time = SystemTime::now();
-        let duration = end_time.duration_since(start_time).unwrap_or(std::time::Duration::ZERO);
+        let duration = end_time
+            .duration_since(start_time)
+            .unwrap_or(std::time::Duration::ZERO);
         let time_ms = duration.as_millis() as u64;
 
         Ok(HashResult {
@@ -125,13 +131,22 @@ impl FileSystem {
     }
 
     /// Verify file hash
-    pub async fn verify_hash(&self, path: &PathBuf, expected_hash: &str, algorithm: HashAlgorithm) -> FsResult<bool> {
+    pub async fn verify_hash(
+        &self,
+        path: &PathBuf,
+        expected_hash: &str,
+        algorithm: HashAlgorithm,
+    ) -> FsResult<bool> {
         let result = self.calculate_hash(path, algorithm).await?;
         Ok(result.hash == expected_hash)
     }
 
     /// Calculate hash of a directory (recursive)
-    pub async fn calculate_directory_hash(&self, path: &PathBuf, algorithm: HashAlgorithm) -> FsResult<HashResult> {
+    pub async fn calculate_directory_hash(
+        &self,
+        path: &PathBuf,
+        algorithm: HashAlgorithm,
+    ) -> FsResult<HashResult> {
         let start_time = std::time::Instant::now();
 
         let mut hasher = algorithm.new_hasher();

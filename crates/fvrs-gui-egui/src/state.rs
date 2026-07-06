@@ -1,6 +1,6 @@
+use serde::{Deserialize, Serialize};
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use serde::{Deserialize, Serialize};
 
 use crate::archive::{ArchiveEntry, ArchiveType};
 
@@ -27,13 +27,13 @@ pub struct AppState {
     pub show_delete_dialog: bool,
     pub delete_dialog_items: Vec<PathBuf>,
     pub show_shortcuts_dialog: bool,
-    
+
     // ペイン管理
     pub active_pane: ActivePane,
     pub sidebar_selected_item: Option<PathBuf>,
     pub sidebar_last_selected_index: Option<usize>,
     pub expanded_folders: std::collections::HashSet<PathBuf>,
-    
+
     // ファイル閲覧・編集機能
     pub show_file_viewer: bool,
     pub viewed_file_path: Option<PathBuf>,
@@ -52,12 +52,12 @@ pub struct AppState {
     // 新規フォルダ作成ダイアログ
     pub show_create_folder_dialog: bool,
     pub new_folder_name: String,
-    
+
     // リネームダイアログ
     pub show_rename_dialog: bool,
     pub rename_new_name: String,
     pub rename_target_path: Option<PathBuf>,
-    
+
     // 圧縮ファイル関連
     pub show_unpack_dialog: bool,
     pub show_pack_dialog: bool,
@@ -67,7 +67,7 @@ pub struct AppState {
     pub unpack_destination: String,
     pub pack_filename: String,
     pub pack_format: ArchiveType,
-    
+
     // ファイル情報ダイアログ
     pub show_file_info_dialog: bool,
     pub file_info_target: Option<PathBuf>,
@@ -122,7 +122,7 @@ impl Default for AppState {
             .or_else(std::env::home_dir)
             .or_else(|| crate::utils::available_mounts().into_iter().next())
             .unwrap_or_else(|| PathBuf::from(std::path::MAIN_SEPARATOR_STR));
-            
+
         Self {
             current_path: default_path,
             navigation_history: VecDeque::with_capacity(100),
@@ -139,13 +139,13 @@ impl Default for AppState {
             show_delete_dialog: false,
             delete_dialog_items: Vec::new(),
             show_shortcuts_dialog: false,
-            
+
             // ペイン管理
             active_pane: ActivePane::MainList,
             sidebar_selected_item: None,
             sidebar_last_selected_index: None,
             expanded_folders: std::collections::HashSet::new(),
-            
+
             // ファイル閲覧・編集機能
             show_file_viewer: false,
             viewed_file_path: None,
@@ -164,12 +164,12 @@ impl Default for AppState {
             // 新規フォルダ作成ダイアログ
             show_create_folder_dialog: false,
             new_folder_name: String::new(),
-            
+
             // リネームダイアログ
             show_rename_dialog: false,
             rename_new_name: String::new(),
             rename_target_path: None,
-            
+
             // 圧縮ファイル関連
             show_unpack_dialog: false,
             show_pack_dialog: false,
@@ -179,10 +179,10 @@ impl Default for AppState {
             unpack_destination: String::new(),
             pack_filename: String::new(),
             pack_format: ArchiveType::Zip,
-            
+
             // ファイル情報ダイアログ
             show_file_info_dialog: false,
             file_info_target: None,
         }
     }
-} 
+}

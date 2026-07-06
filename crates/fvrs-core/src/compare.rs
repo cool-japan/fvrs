@@ -27,11 +27,7 @@ pub enum ComparisonType {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Difference {
     /// Different bytes at offset
-    BinaryDiff {
-        offset: u64,
-        left: u8,
-        right: u8,
-    },
+    BinaryDiff { offset: u64, left: u8, right: u8 },
     /// Different lines
     TextDiff {
         line: usize,
@@ -39,10 +35,7 @@ pub enum Difference {
         right: String,
     },
     /// File size difference
-    SizeDiff {
-        left_size: u64,
-        right_size: u64,
-    },
+    SizeDiff { left_size: u64, right_size: u64 },
     /// File type difference
     TypeDiff {
         left_type: String,
@@ -65,7 +58,12 @@ pub struct ComparisonResult {
 
 impl FileSystem {
     /// Compare two files
-    pub async fn compare_files(&self, left: &PathBuf, right: &PathBuf, comparison_type: ComparisonType) -> FsResult<ComparisonResult> {
+    pub async fn compare_files(
+        &self,
+        left: &PathBuf,
+        right: &PathBuf,
+        comparison_type: ComparisonType,
+    ) -> FsResult<ComparisonResult> {
         let start_time = std::time::Instant::now();
         let mut differences = Vec::new();
 
@@ -84,8 +82,11 @@ impl FileSystem {
             ComparisonType::Binary => {
                 self.compare_binary(left, right, &mut differences).await?;
             }
-            ComparisonType::Text | ComparisonType::TextIgnoreWhitespace | ComparisonType::TextIgnoreCase => {
-                self.compare_text(left, right, comparison_type, &mut differences).await?;
+            ComparisonType::Text
+            | ComparisonType::TextIgnoreWhitespace
+            | ComparisonType::TextIgnoreCase => {
+                self.compare_text(left, right, comparison_type, &mut differences)
+                    .await?;
             }
         }
 
@@ -100,7 +101,12 @@ impl FileSystem {
         })
     }
 
-    async fn compare_binary(&self, left: &PathBuf, right: &PathBuf, differences: &mut Vec<Difference>) -> FsResult<()> {
+    async fn compare_binary(
+        &self,
+        left: &PathBuf,
+        right: &PathBuf,
+        differences: &mut Vec<Difference>,
+    ) -> FsResult<()> {
         let mut left_file = fs::File::open(left).await?;
         let mut right_file = fs::File::open(right).await?;
 
@@ -133,7 +139,13 @@ impl FileSystem {
         Ok(())
     }
 
-    async fn compare_text(&self, left: &PathBuf, right: &PathBuf, comparison_type: ComparisonType, differences: &mut Vec<Difference>) -> FsResult<()> {
+    async fn compare_text(
+        &self,
+        left: &PathBuf,
+        right: &PathBuf,
+        comparison_type: ComparisonType,
+        differences: &mut Vec<Difference>,
+    ) -> FsResult<()> {
         let left_file = fs::File::open(left).await?;
         let right_file = fs::File::open(right).await?;
 
@@ -182,7 +194,12 @@ impl FileSystem {
     }
 
     /// Compare two directories recursively
-    pub async fn compare_directories(&self, left: &PathBuf, right: &PathBuf, comparison_type: ComparisonType) -> FsResult<ComparisonResult> {
+    pub async fn compare_directories(
+        &self,
+        left: &PathBuf,
+        right: &PathBuf,
+        comparison_type: ComparisonType,
+    ) -> FsResult<ComparisonResult> {
         let start_time = std::time::Instant::now();
         let mut differences = Vec::new();
 
@@ -199,8 +216,12 @@ impl FileSystem {
 
         // Compare file lists
         for left_path in &left_entries {
-            let relative_path = left_path.strip_prefix(left)
-                .map_err(|e| FsError::Comparison(format!("Failed to strip prefix {:?} from {:?}: {}", left, left_path, e)))?;
+            let relative_path = left_path.strip_prefix(left).map_err(|e| {
+                FsError::Comparison(format!(
+                    "Failed to strip prefix {:?} from {:?}: {}",
+                    left, left_path, e
+                ))
+            })?;
             let right_path = right.join(relative_path);
 
             if !right_path.exists() {
@@ -212,15 +233,21 @@ impl FileSystem {
             }
 
             if left_path.is_file() && right_path.is_file() {
-                let result = self.compare_files(left_path, &right_path, comparison_type).await?;
+                let result = self
+                    .compare_files(left_path, &right_path, comparison_type)
+                    .await?;
                 differences.extend(result.differences);
             }
         }
 
         // Check for files in right that don't exist in left
         for right_path in &right_entries {
-            let relative_path = right_path.strip_prefix(right)
-                .map_err(|e| FsError::Comparison(format!("Failed to strip prefix {:?} from {:?}: {}", right, right_path, e)))?;
+            let relative_path = right_path.strip_prefix(right).map_err(|e| {
+                FsError::Comparison(format!(
+                    "Failed to strip prefix {:?} from {:?}: {}",
+                    right, right_path, e
+                ))
+            })?;
             let left_path = left.join(relative_path);
 
             if !left_path.exists() {

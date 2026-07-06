@@ -1,9 +1,9 @@
-use std::path::Path;
-use egui::{Color32, Layout, Align, Stroke};
-use egui_extras::{TableBuilder, Column};
-use fvrs_core::core::FileEntry;
-use crate::state::{ViewMode, SortColumn, ActivePane};
+use crate::state::{ActivePane, SortColumn, ViewMode};
 use crate::utils::{format_file_size, format_time};
+use egui::{Align, Color32, Layout, Stroke};
+use egui_extras::{Column, TableBuilder};
+use fvrs_core::core::FileEntry;
+use std::path::Path;
 
 pub struct FileListUI;
 
@@ -66,12 +66,11 @@ impl FileListUI {
         let is_active = *active_pane == ActivePane::MainList;
 
         // ペイン全体にフレームを適用してアクティブ状態を視覚化
-        let frame = egui::Frame::default()
-            .stroke(if is_active {
-                Stroke::new(2.0, Color32::from_rgb(0, 120, 215)) // 青い枠
-            } else {
-                Stroke::new(1.0, Color32::GRAY) // グレーの枠
-            });
+        let frame = egui::Frame::default().stroke(if is_active {
+            Stroke::new(2.0, Color32::from_rgb(0, 120, 215)) // 青い枠
+        } else {
+            Stroke::new(1.0, Color32::GRAY) // グレーの枠
+        });
 
         let view = ViewParams {
             entries,
@@ -82,14 +81,12 @@ impl FileListUI {
             file_open_callback,
         };
 
-        let response = frame.show(ui, |ui| {
-            match view_mode {
-                ViewMode::Details => Self::show_details_view(
-                    ui, view, sort_column, sort_ascending, directory_cache,
-                ),
-                ViewMode::List => Self::show_list_view(ui, view),
-                ViewMode::Grid => Self::show_grid_view(ui, view),
+        let response = frame.show(ui, |ui| match view_mode {
+            ViewMode::Details => {
+                Self::show_details_view(ui, view, sort_column, sort_ascending, directory_cache)
             }
+            ViewMode::List => Self::show_list_view(ui, view),
+            ViewMode::Grid => Self::show_grid_view(ui, view),
         });
 
         // フレームがクリックされたらペインをアクティブ化
@@ -131,9 +128,18 @@ impl FileListUI {
                     ui.strong("　");
                 });
                 header.col(|ui| {
-                    if ui.button(if *sort_column == SortColumn::Name {
-                        if *sort_ascending { "名前 ▲" } else { "名前 ▼" }
-                    } else { "名前" }).clicked() {
+                    if ui
+                        .button(if *sort_column == SortColumn::Name {
+                            if *sort_ascending {
+                                "名前 ▲"
+                            } else {
+                                "名前 ▼"
+                            }
+                        } else {
+                            "名前"
+                        })
+                        .clicked()
+                    {
                         if *sort_column == SortColumn::Name {
                             *sort_ascending = !*sort_ascending;
                         } else {
@@ -144,9 +150,18 @@ impl FileListUI {
                     }
                 });
                 header.col(|ui| {
-                    if ui.button(if *sort_column == SortColumn::Size {
-                        if *sort_ascending { "サイズ ▲" } else { "サイズ ▼" }
-                    } else { "サイズ" }).clicked() {
+                    if ui
+                        .button(if *sort_column == SortColumn::Size {
+                            if *sort_ascending {
+                                "サイズ ▲"
+                            } else {
+                                "サイズ ▼"
+                            }
+                        } else {
+                            "サイズ"
+                        })
+                        .clicked()
+                    {
                         if *sort_column == SortColumn::Size {
                             *sort_ascending = !*sort_ascending;
                         } else {
@@ -157,9 +172,18 @@ impl FileListUI {
                     }
                 });
                 header.col(|ui| {
-                    if ui.button(if *sort_column == SortColumn::Modified {
-                        if *sort_ascending { "更新日時 ▲" } else { "更新日時 ▼" }
-                    } else { "更新日時" }).clicked() {
+                    if ui
+                        .button(if *sort_column == SortColumn::Modified {
+                            if *sort_ascending {
+                                "更新日時 ▲"
+                            } else {
+                                "更新日時 ▼"
+                            }
+                        } else {
+                            "更新日時"
+                        })
+                        .clicked()
+                    {
                         if *sort_column == SortColumn::Modified {
                             *sort_ascending = !*sort_ascending;
                         } else {
@@ -170,9 +194,18 @@ impl FileListUI {
                     }
                 });
                 header.col(|ui| {
-                    if ui.button(if *sort_column == SortColumn::Type {
-                        if *sort_ascending { "種類 ▲" } else { "種類 ▼" }
-                    } else { "種類" }).clicked() {
+                    if ui
+                        .button(if *sort_column == SortColumn::Type {
+                            if *sort_ascending {
+                                "種類 ▲"
+                            } else {
+                                "種類 ▼"
+                            }
+                        } else {
+                            "種類"
+                        })
+                        .clicked()
+                    {
                         if *sort_column == SortColumn::Type {
                             *sort_ascending = !*sort_ascending;
                         } else {
@@ -201,7 +234,7 @@ impl FileListUI {
                         } else {
                             entry.name.clone()
                         };
-                        
+
                         let name_response = ui.selectable_label(is_selected, display_name);
                         if name_response.double_clicked() {
                             if entry.name == ".." {
@@ -218,13 +251,13 @@ impl FileListUI {
                         }
                         if name_response.clicked() {
                             let modifiers = ui.input(|i| i.modifiers);
-                            
+
                             if modifiers.shift {
                                 // Shift+クリック: 範囲選択
                                 if let Some(last_idx) = *last_selected_index {
                                     let start_idx = last_idx.min(row_index);
                                     let end_idx = last_idx.max(row_index);
-                                    
+
                                     selected_items.clear();
                                     for idx in start_idx..=end_idx {
                                         if idx < entries.len() {
@@ -301,9 +334,9 @@ impl FileListUI {
 
                 ui.horizontal(|ui| {
                     ui.label(if entry.is_dir { "📁" } else { "📄" });
-                    
+
                     let response = ui.selectable_label(is_selected, &entry.name);
-                    
+
                     if response.double_clicked() {
                         if entry.is_dir {
                             navigate_callback(entry_path.clone());
@@ -311,16 +344,16 @@ impl FileListUI {
                             file_open_callback(entry_path.clone());
                         }
                     }
-                    
+
                     if response.clicked() {
                         let modifiers = ui.input(|i| i.modifiers);
-                        
+
                         if modifiers.shift {
                             // Shift+クリック: 範囲選択
                             if let Some(last_idx) = *last_selected_index {
                                 let start_idx = last_idx.min(row_index);
                                 let end_idx = last_idx.max(row_index);
-                                
+
                                 selected_items.clear();
                                 for idx in start_idx..=end_idx {
                                     if idx < entries.len() {
@@ -368,11 +401,12 @@ impl FileListUI {
 
         const ITEM_SIZE: f32 = 80.0;
         const SPACING: f32 = 10.0;
-        
+
         egui::ScrollArea::vertical().show(ui, |ui| {
             let available_width = ui.available_width();
-            let items_per_row = ((available_width + SPACING) / (ITEM_SIZE + SPACING)).max(1.0) as usize;
-            
+            let items_per_row =
+                ((available_width + SPACING) / (ITEM_SIZE + SPACING)).max(1.0) as usize;
+
             let mut current_index = 0;
             for chunk in entries.chunks(items_per_row) {
                 ui.horizontal(|ui| {
@@ -380,47 +414,51 @@ impl FileListUI {
                         let row_index = current_index + chunk_idx;
                         let entry_path = current_path.join(&entry.name);
                         let is_selected = selected_items.contains(&entry_path);
-                        
+
                         ui.allocate_ui_with_layout(
                             [ITEM_SIZE, ITEM_SIZE].into(),
                             Layout::top_down(Align::Center),
                             |ui| {
                                 let icon = if entry.is_dir { "📁" } else { "📄" };
-                                
+
                                 let icon_response = ui.button(icon);
-                                let name_response = ui.add(
-                                    egui::Label::new(&entry.name)
-                                        .selectable(false)
-                                        .wrap()
-                                );
-                                
+                                let name_response =
+                                    ui.add(egui::Label::new(&entry.name).selectable(false).wrap());
+
                                 if is_selected {
                                     let rect = icon_response.rect.union(name_response.rect);
-                                    ui.painter().rect_stroke(rect, 2.0, egui::Stroke::new(2.0, Color32::BLUE), egui::StrokeKind::Outside);
+                                    ui.painter().rect_stroke(
+                                        rect,
+                                        2.0,
+                                        egui::Stroke::new(2.0, Color32::BLUE),
+                                        egui::StrokeKind::Outside,
+                                    );
                                 }
-                                
-                                if icon_response.double_clicked() || name_response.double_clicked() {
+
+                                if icon_response.double_clicked() || name_response.double_clicked()
+                                {
                                     if entry.is_dir {
                                         navigate_callback(entry_path.clone());
                                     } else {
                                         file_open_callback(entry_path.clone());
                                     }
                                 }
-                                
+
                                 if icon_response.clicked() || name_response.clicked() {
                                     let modifiers = ui.input(|i| i.modifiers);
-                                    
+
                                     if modifiers.shift {
                                         // Shift+クリック: 範囲選択
                                         if let Some(last_idx) = *last_selected_index {
                                             let start_idx = last_idx.min(row_index);
                                             let end_idx = last_idx.max(row_index);
-                                            
+
                                             selected_items.clear();
                                             for idx in start_idx..=end_idx {
                                                 if idx < entries.len() {
                                                     let target_entry = entries[idx];
-                                                    let target_path = current_path.join(&target_entry.name);
+                                                    let target_path =
+                                                        current_path.join(&target_entry.name);
                                                     selected_items.push(target_path);
                                                 }
                                             }
@@ -445,9 +483,9 @@ impl FileListUI {
                                         *last_selected_index = Some(row_index);
                                     }
                                 }
-                            }
+                            },
                         );
-                        
+
                         ui.add_space(SPACING);
                     }
                 });
@@ -456,4 +494,4 @@ impl FileListUI {
             }
         });
     }
-} 
+}

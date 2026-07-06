@@ -1,8 +1,8 @@
-use std::path::PathBuf;
-use egui::{Context, Color32, Stroke, Response};
 use crate::app::FileVisorApp;
 use crate::state::ActivePane;
 use crate::utils::mount_label;
+use egui::{Color32, Context, Response, Stroke};
+use std::path::PathBuf;
 
 pub struct ExplorerTreeUI;
 
@@ -13,29 +13,30 @@ impl ExplorerTreeUI {
         _ctx: &Context,
     ) -> Response {
         let is_active = app.state.active_pane == ActivePane::LeftSidebar;
-        
+
         // ペイン全体のスタイル設定
-        let frame = egui::Frame::side_top_panel(ui.style())
-            .stroke(if is_active {
-                Stroke::new(2.0, Color32::from_rgb(0, 120, 215)) // 青い枠
-            } else {
-                Stroke::new(1.0, Color32::GRAY) // グレーの枠
-            });
-        
-        frame.show(ui, |ui| {
-            ui.heading("📁 エクスプローラー");
-            ui.separator();
-            
-            egui::ScrollArea::vertical()
-                .id_salt("explorer_tree")
-                .show(ui, |ui| {
-                    Self::show_drives(ui, app);
-                    ui.separator();
-                    Self::show_directory_tree(ui, app);
-                });
-        }).response
+        let frame = egui::Frame::side_top_panel(ui.style()).stroke(if is_active {
+            Stroke::new(2.0, Color32::from_rgb(0, 120, 215)) // 青い枠
+        } else {
+            Stroke::new(1.0, Color32::GRAY) // グレーの枠
+        });
+
+        frame
+            .show(ui, |ui| {
+                ui.heading("📁 エクスプローラー");
+                ui.separator();
+
+                egui::ScrollArea::vertical()
+                    .id_salt("explorer_tree")
+                    .show(ui, |ui| {
+                        Self::show_drives(ui, app);
+                        ui.separator();
+                        Self::show_directory_tree(ui, app);
+                    });
+            })
+            .response
     }
-    
+
     fn show_drives(ui: &mut egui::Ui, app: &mut FileVisorApp) {
         ui.label("💾 ドライブ");
 
@@ -43,17 +44,17 @@ impl ExplorerTreeUI {
         // （TTL 付きキャッシュ経由 — 毎フレームのボリューム stat を避ける）
         let mounts: Vec<PathBuf> = app.mount_cache.mounts().to_vec();
         for mount_path in mounts {
-            let is_selected = app.state.sidebar_selected_item
+            let is_selected = app
+                .state
+                .sidebar_selected_item
                 .as_ref()
                 .map(|p| *p == mount_path)
                 .unwrap_or(false);
 
             let is_current = app.state.current_path.starts_with(&mount_path);
 
-            let response = ui.selectable_label(
-                is_selected,
-                format!("💾 {}", mount_label(&mount_path))
-            );
+            let response =
+                ui.selectable_label(is_selected, format!("💾 {}", mount_label(&mount_path)));
 
             if response.clicked() {
                 app.state.active_pane = ActivePane::LeftSidebar;
@@ -68,22 +69,22 @@ impl ExplorerTreeUI {
             }
         }
     }
-    
+
     fn show_directory_tree(ui: &mut egui::Ui, app: &mut FileVisorApp) {
         ui.label("📂 フォルダーツリー");
-        
+
         // 現在のパスをクローンして借用問題を回避
         let current_path = app.state.current_path.clone();
-        
+
         // 親ディレクトリがあれば表示
         if let Some(parent) = current_path.parent() {
             Self::show_folder_item(ui, app, &parent.to_path_buf(), 0, false);
         }
-        
+
         // 現在のディレクトリを表示（展開状態）
         Self::show_folder_item(ui, app, &current_path, 0, true);
     }
-    
+
     fn show_folder_item(
         ui: &mut egui::Ui,
         app: &mut FileVisorApp,
@@ -92,13 +93,13 @@ impl ExplorerTreeUI {
         force_expanded: bool,
     ) {
         let indent = depth as f32 * 15.0;
-        
+
         let has_children = Self::has_subdirectories_cached(folder_path);
         let is_expanded = force_expanded || app.state.expanded_folders.contains(folder_path);
-        
+
         ui.horizontal(|ui| {
             ui.add_space(indent);
-            
+
             // 展開/折りたたみアイコン
             if has_children {
                 let expand_icon = if is_expanded { "▼" } else { "▶" };
@@ -112,44 +113,46 @@ impl ExplorerTreeUI {
             } else {
                 ui.add_space(20.0);
             }
-            
+
             // フォルダー名
             let folder_name = folder_path
                 .file_name()
                 .map(|n| n.to_str().unwrap_or("?"))
                 .unwrap_or("ルート");
-            
+
             // 選択状態の判定
-            let is_selected = app.state.sidebar_selected_item
+            let is_selected = app
+                .state
+                .sidebar_selected_item
                 .as_ref()
                 .map(|p| *p == *folder_path)
                 .unwrap_or(false);
-            
+
             let is_current_path = app.state.current_path == *folder_path;
-            
+
             let response = ui.selectable_label(is_selected, format!("📁 {}", folder_name));
-            
+
             if response.clicked() {
                 app.state.active_pane = ActivePane::LeftSidebar;
                 app.state.sidebar_selected_item = Some(folder_path.clone());
             }
-            
+
             if response.double_clicked() {
                 app.navigate_to(folder_path.clone());
             }
-            
+
             // 現在のパスをハイライト
             if is_current_path && !is_selected {
                 response.highlight();
             }
         });
-        
+
         // 展開されている場合、子フォルダーを表示
         if is_expanded && has_children {
             Self::show_child_folders_simple(ui, app, folder_path, depth + 1);
         }
     }
-    
+
     fn show_child_folders_simple(
         ui: &mut egui::Ui,
         app: &mut FileVisorApp,
@@ -158,7 +161,7 @@ impl ExplorerTreeUI {
     ) {
         // 高速化のため、最大表示数を制限
         const MAX_FOLDERS: usize = 50;
-        
+
         if let Ok(entries) = std::fs::read_dir(parent_path) {
             let mut subdirs: Vec<_> = entries
                 .filter_map(|entry| entry.ok())
@@ -171,35 +174,33 @@ impl ExplorerTreeUI {
                 .map(|entry| entry.path())
                 .take(MAX_FOLDERS)
                 .collect();
-            
+
             subdirs.sort();
-            
+
             for subdir in subdirs {
                 Self::show_folder_item(ui, app, &subdir, depth, false);
             }
         }
     }
-    
+
     fn has_subdirectories_cached(path: &PathBuf) -> bool {
         // 極めて高速なチェック：ディレクトリエントリの存在確認のみ
         match std::fs::read_dir(path) {
             Ok(mut entries) => {
                 // 最初のディレクトリエントリが見つかった時点で true を返す
-                entries.find_map(|entry| {
-                    entry.ok()?.path().is_dir().then_some(true)
-                }).unwrap_or(false)
+                entries
+                    .find_map(|entry| entry.ok()?.path().is_dir().then_some(true))
+                    .unwrap_or(false)
             }
             Err(_) => false,
         }
     }
-    
 
-    
     pub fn handle_tree_navigation(app: &mut FileVisorApp, ctx: &Context) {
         if app.state.active_pane != ActivePane::LeftSidebar {
             return;
         }
-        
+
         ctx.input(|i| {
             if i.key_pressed(egui::Key::ArrowUp) {
                 Self::navigate_up(app);
@@ -218,32 +219,32 @@ impl ExplorerTreeUI {
             }
         });
     }
-    
+
     fn navigate_up(_app: &mut FileVisorApp) {
         // TODO: 実装
         tracing::info!("ツリー上へ移動");
     }
-    
+
     fn navigate_down(_app: &mut FileVisorApp) {
         // TODO: 実装
         tracing::info!("ツリー下へ移動");
     }
-    
+
     fn collapse_current(app: &mut FileVisorApp) {
         if let Some(selected) = &app.state.sidebar_selected_item {
             app.state.expanded_folders.remove(selected);
         }
     }
-    
+
     fn expand_current(app: &mut FileVisorApp) {
         if let Some(selected) = &app.state.sidebar_selected_item {
             app.state.expanded_folders.insert(selected.clone());
         }
     }
-    
+
     fn enter_selected(app: &mut FileVisorApp) {
         if let Some(selected) = &app.state.sidebar_selected_item {
             app.navigate_to(selected.clone());
         }
     }
-} 
+}

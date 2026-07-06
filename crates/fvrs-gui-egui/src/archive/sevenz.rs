@@ -865,11 +865,7 @@ fn assemble_entries(
             .get(global_stream)
             .copied()
             .ok_or_else(|| "7Z サブストリームサイズの不整合".to_string())?;
-        let crc = streams
-            .substream_crcs
-            .get(global_stream)
-            .copied()
-            .flatten();
+        let crc = streams.substream_crcs.get(global_stream).copied().flatten();
         let single = streams
             .num_unpack_streams
             .get(folder_index)
@@ -1003,8 +999,8 @@ fn decode_coder(coder: &Coder, input: Vec<u8>, out_size: Option<u64>) -> Result<
         [0x00] => input,
         // LZMA2
         [0x21] => {
-            let expected = out_size
-                .ok_or_else(|| "7Z LZMA2 の解凍後サイズが不明です".to_string())?;
+            let expected =
+                out_size.ok_or_else(|| "7Z LZMA2 の解凍後サイズが不明です".to_string())?;
             lzma_compat::decode_lzma2(&input, expected)
                 .map_err(|e| format!("7Z LZMA2 解凍エラー: {}", e))?
         }
@@ -1013,8 +1009,8 @@ fn decode_coder(coder: &Coder, input: Vec<u8>, out_size: Option<u64>) -> Result<
             if coder.props.is_empty() {
                 return Err("7Z LZMA プロパティが不正です".to_string());
             }
-            let expected = out_size
-                .ok_or_else(|| "7Z LZMA の解凍後サイズが不明です".to_string())?;
+            let expected =
+                out_size.ok_or_else(|| "7Z LZMA の解凍後サイズが不明です".to_string())?;
             lzma_compat::decode_lzma1(&input, coder.props[0], expected)
                 .map_err(|e| format!("7Z LZMA 解凍エラー: {}", e))?
         }
@@ -1034,8 +1030,9 @@ fn decode_coder(coder: &Coder, input: Vec<u8>, out_size: Option<u64>) -> Result<
             data
         }
         // Deflate
-        [0x04, 0x01, 0x08] => oxiarc_deflate::inflate(&input)
-            .map_err(|e| format!("7Z Deflate 解凍エラー: {}", e))?,
+        [0x04, 0x01, 0x08] => {
+            oxiarc_deflate::inflate(&input).map_err(|e| format!("7Z Deflate 解凍エラー: {}", e))?
+        }
         // BZip2 (自前実装。oxiarc-bzip2 0.3.3 は実 libbz2 ストリームと非互換)
         [0x04, 0x02, 0x02] => super::bzip2_compat::decompress(&input)
             .map_err(|e| format!("7Z BZip2 解凍エラー: {}", e))?,

@@ -1,6 +1,6 @@
+use chrono::{DateTime, Local};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, Instant};
-use chrono::{DateTime, Local};
 
 /// 利用可能なマウントポイント（ドライブ・ボリューム）を実行時に列挙する
 ///
@@ -139,12 +139,12 @@ fn japanese_font_candidates() -> &'static [&'static str] {
     #[cfg(target_os = "windows")]
     {
         &[
-            "C:/Windows/Fonts/meiryo.ttc",       // メイリオ
-            "C:/Windows/Fonts/msgothic.ttc",     // MSゴシック
-            "C:/Windows/Fonts/YuGothM.ttc",      // 游ゴシック Medium
-            "C:/Windows/Fonts/YuGothR.ttc",      // 游ゴシック Regular
+            "C:/Windows/Fonts/meiryo.ttc",              // メイリオ
+            "C:/Windows/Fonts/msgothic.ttc",            // MSゴシック
+            "C:/Windows/Fonts/YuGothM.ttc",             // 游ゴシック Medium
+            "C:/Windows/Fonts/YuGothR.ttc",             // 游ゴシック Regular
             "C:/Windows/Fonts/NotoSansCJK-Regular.ttc", // Noto Sans CJK
-            "C:/Windows/Fonts/calibri.ttf",      // Calibri (フォールバック)
+            "C:/Windows/Fonts/calibri.ttf",             // Calibri (フォールバック)
         ]
     }
     #[cfg(target_os = "macos")]
@@ -154,9 +154,9 @@ fn japanese_font_candidates() -> &'static [&'static str] {
             "/System/Library/Fonts/ヒラギノ角ゴシック W4.ttc", // ヒラギノ角ゴシック W4
             "/System/Library/Fonts/ヒラギノ丸ゴ ProN W4.ttc",  // ヒラギノ丸ゴ ProN
             "/System/Library/Fonts/ヒラギノ明朝 ProN.ttc",     // ヒラギノ明朝 ProN
-            "/System/Library/Fonts/Hiragino Sans GB.ttc",       // Hiragino Sans GB
-            "/Library/Fonts/NotoSansCJK-Regular.ttc",           // Noto Sans CJK (手動導入)
-            "/System/Library/Fonts/AquaKana.ttc",               // アクアかな (フォールバック)
+            "/System/Library/Fonts/Hiragino Sans GB.ttc",      // Hiragino Sans GB
+            "/Library/Fonts/NotoSansCJK-Regular.ttc",          // Noto Sans CJK (手動導入)
+            "/System/Library/Fonts/AquaKana.ttc",              // アクアかな (フォールバック)
         ]
     }
     #[cfg(target_os = "linux")]
@@ -168,7 +168,7 @@ fn japanese_font_candidates() -> &'static [&'static str] {
             "/usr/share/fonts/TTF/NotoSansCJK-Regular.ttc",           // Noto CJK (Arch 旧配置)
             "/usr/share/fonts/google-noto-cjk/NotoSansCJK-Regular.ttc", // Noto CJK (Fedora)
             "/usr/share/fonts/opentype/ipafont-gothic/ipag.ttf",      // IPAゴシック
-            "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",    // 日本語ゴシック (alternatives)
+            "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf", // 日本語ゴシック (alternatives)
             "/usr/share/fonts/truetype/takao-gothic/TakaoGothic.ttf", // Takaoゴシック
         ]
     }
@@ -249,17 +249,13 @@ mod tests {
             "macOS の日本語フォント候補リストが空です"
         );
 
-        let loaded = candidates.iter().find_map(|path| {
-            std::fs::read(path).ok().map(|bytes| (*path, bytes))
-        });
+        let loaded = candidates
+            .iter()
+            .find_map(|path| std::fs::read(path).ok().map(|bytes| (*path, bytes)));
 
         match loaded {
             Some((path, bytes)) => {
-                assert!(
-                    !bytes.is_empty(),
-                    "フォントファイルが空です: {}",
-                    path
-                );
+                assert!(!bytes.is_empty(), "フォントファイルが空です: {}", path);
             }
             None => panic!(
                 "候補パスのいずれからも日本語フォントを読み込めませんでした: {:?}",

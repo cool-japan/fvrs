@@ -387,11 +387,7 @@ impl LzmaDecoder {
 }
 
 /// 生の LZMA1 ストリームを復号する（7z の 030101 コーダー）
-pub(super) fn decode_lzma1(
-    input: &[u8],
-    props_byte: u8,
-    expected: u64,
-) -> Result<Vec<u8>, String> {
+pub(super) fn decode_lzma1(input: &[u8], props_byte: u8, expected: u64) -> Result<Vec<u8>, String> {
     let props = LzmaProps::from_byte(props_byte)?;
     let mut decoder = LzmaDecoder::new(props);
     let mut out = Vec::with_capacity((expected as usize).min(16 * 1024 * 1024));
@@ -428,9 +424,9 @@ pub(super) fn decode_lzma2(input: &[u8], expected: u64) -> Result<Vec<u8>, Strin
             if control > 2 {
                 return Err(format!("LZMA2 制御バイトが不正です: 0x{:02X}", control));
             }
-            let size =
-                ((usize::from(read(&mut pos, input)?)) << 8 | usize::from(read(&mut pos, input)?))
-                    + 1;
+            let size = ((usize::from(read(&mut pos, input)?)) << 8
+                | usize::from(read(&mut pos, input)?))
+                + 1;
             if control == 1 {
                 dict_start = out.len();
             }
@@ -461,8 +457,7 @@ pub(super) fn decode_lzma2(input: &[u8], expected: u64) -> Result<Vec<u8>, Strin
             dict_start = out.len();
         }
         if reset >= 1 {
-            let props = last_props
-                .ok_or_else(|| "LZMA2 プロパティが未指定です".to_string())?;
+            let props = last_props.ok_or_else(|| "LZMA2 プロパティが未指定です".to_string())?;
             decoder = Some(LzmaDecoder::new(props));
         }
 

@@ -104,7 +104,8 @@ fn build_source_tree(root: &Path) -> Result<Vec<(PathBuf, Vec<u8>)>, String> {
 /// ディレクトリ配下の全ファイルの相対パスを収集
 fn collect_files(root: &Path) -> Result<Vec<PathBuf>, String> {
     fn walk(dir: &Path, root: &Path, out: &mut Vec<PathBuf>) -> Result<(), String> {
-        for dir_entry in fs::read_dir(dir).map_err(|e| format!("ディレクトリ走査エラー: {}", e))? {
+        for dir_entry in fs::read_dir(dir).map_err(|e| format!("ディレクトリ走査エラー: {}", e))?
+        {
             let dir_entry = dir_entry.map_err(|e| format!("エントリ読み込みエラー: {}", e))?;
             let path = dir_entry.path();
             if path.is_dir() {
@@ -145,7 +146,11 @@ fn roundtrip(
     let archive_len = fs::metadata(&archive_path)
         .map_err(|e| format!("アーカイブメタデータ取得エラー: {}", e))?
         .len();
-    assert!(archive_len > 0, "作成されたアーカイブが空です: {}", archive_file_name);
+    assert!(
+        archive_len > 0,
+        "作成されたアーカイブが空です: {}",
+        archive_file_name
+    );
 
     // 一覧（名前とサイズを検証）
     let entries = ArchiveHandler::list_archive_contents(&archive_path)?;
@@ -155,7 +160,11 @@ fn roundtrip(
             .iter()
             .find(|e| e.name.trim_end_matches('/') == expected_name)
             .ok_or_else(|| format!("一覧にエントリがありません: {}", expected_name))?;
-        assert!(!entry.is_dir, "ファイルがディレクトリ扱いです: {}", expected_name);
+        assert!(
+            !entry.is_dir,
+            "ファイルがディレクトリ扱いです: {}",
+            expected_name
+        );
         assert_eq!(
             entry.size,
             data.len() as u64,
@@ -164,8 +173,17 @@ fn roundtrip(
         );
     }
     let file_entry_count = entries.iter().filter(|e| !e.is_dir).count();
-    assert_eq!(file_entry_count, files.len(), "一覧のファイルエントリ数が不正です");
-    for dir_name in ["src_root", "src_root/nested", "src_root/nested/deep", "src_root/empty_dir"] {
+    assert_eq!(
+        file_entry_count,
+        files.len(),
+        "一覧のファイルエントリ数が不正です"
+    );
+    for dir_name in [
+        "src_root",
+        "src_root/nested",
+        "src_root/nested/deep",
+        "src_root/empty_dir",
+    ] {
         let entry = entries
             .iter()
             .find(|e| e.name.trim_end_matches('/') == dir_name)
@@ -180,8 +198,13 @@ fn roundtrip(
     // 全ファイルをバイト比較（日本語名も厳密一致）
     for (rel, data) in &files {
         let extracted = out_dir.join("src_root").join(rel);
-        let got = fs::read(&extracted)
-            .map_err(|e| format!("解凍ファイル読み込みエラー ({}): {}", extracted.display(), e))?;
+        let got = fs::read(&extracted).map_err(|e| {
+            format!(
+                "解凍ファイル読み込みエラー ({}): {}",
+                extracted.display(),
+                e
+            )
+        })?;
         assert_eq!(
             got.len(),
             data.len(),
@@ -242,8 +265,9 @@ fn gz_list_and_extract_honors_header_filename() -> Result<(), String> {
     let dir = TestDir::new("gz_named")?;
     let original = "GZ 形式の内容テスト。Original content for gzip.".repeat(64);
 
-    let gz_bytes = oxiarc_archive::gzip::compress_with_filename(original.as_bytes(), "original_name.txt", 6)
-        .map_err(|e| format!("GZ フィクスチャ作成エラー: {}", e))?;
+    let gz_bytes =
+        oxiarc_archive::gzip::compress_with_filename(original.as_bytes(), "original_name.txt", 6)
+            .map_err(|e| format!("GZ フィクスチャ作成エラー: {}", e))?;
     let gz_path = dir.path().join("renamed_on_disk.gz");
     fs::write(&gz_path, &gz_bytes).map_err(|e| format!("GZ 書き込みエラー: {}", e))?;
 
@@ -292,7 +316,10 @@ fn encode_7z_number(value: usize) -> Result<Vec<u8>, String> {
     } else if value < 0x4000 {
         Ok(vec![0x80 | (value >> 8) as u8, (value & 0xFF) as u8])
     } else {
-        Err(format!("テスト用 7z 数値エンコードは 0x4000 未満のみ対応: {}", value))
+        Err(format!(
+            "テスト用 7z 数値エンコードは 0x4000 未満のみ対応: {}",
+            value
+        ))
     }
 }
 
@@ -421,10 +448,7 @@ fn sevenz_listing_does_not_pollute_temp_dir() -> Result<(), String> {
 ///
 /// 構成: 1 フォルダー (Copy) に 2 ファイル分のサブストリーム、
 /// 空ストリームのディレクトリ "dir" と空ファイル "empty.txt"。
-fn build_multi_entry_7z(
-    content_a: &[u8],
-    content_b: &[u8],
-) -> Result<Vec<u8>, String> {
+fn build_multi_entry_7z(content_a: &[u8], content_b: &[u8]) -> Result<Vec<u8>, String> {
     use oxiarc_core::Crc32;
 
     let packed: Vec<u8> = content_a.iter().chain(content_b.iter()).copied().collect();
@@ -532,19 +556,25 @@ fn sevenz_substreams_empty_file_and_dir_extract_correctly() -> Result<(), String
     assert!(find("dir")?.is_dir, "dir がディレクトリ扱いではありません");
     assert_eq!(find("a.txt")?.size, content_a.len() as u64);
     assert_eq!(find("empty.txt")?.size, 0);
-    assert!(!find("empty.txt")?.is_dir, "空ファイルがディレクトリ扱いです");
+    assert!(
+        !find("empty.txt")?.is_dir,
+        "空ファイルがディレクトリ扱いです"
+    );
     assert_eq!(find("b.txt")?.size, content_b.len() as u64);
 
     // 解凍: 全エントリが正しい内容で解凍されること（空ファイル入りでも中断しない）
     let out_dir = dir.path().join("out");
     ArchiveHandler::extract_archive(&archive_path, &out_dir)?;
 
-    assert!(out_dir.join("dir").is_dir(), "ディレクトリが復元されていません");
-    let got_a = fs::read(out_dir.join("a.txt"))
-        .map_err(|e| format!("a.txt 読み込みエラー: {}", e))?;
+    assert!(
+        out_dir.join("dir").is_dir(),
+        "ディレクトリが復元されていません"
+    );
+    let got_a =
+        fs::read(out_dir.join("a.txt")).map_err(|e| format!("a.txt 読み込みエラー: {}", e))?;
     assert!(got_a == content_a, "a.txt の内容が不一致です");
-    let got_b = fs::read(out_dir.join("b.txt"))
-        .map_err(|e| format!("b.txt 読み込みエラー: {}", e))?;
+    let got_b =
+        fs::read(out_dir.join("b.txt")).map_err(|e| format!("b.txt 読み込みエラー: {}", e))?;
     assert!(got_b == content_b, "b.txt の内容が不一致です");
     let got_empty = fs::read(out_dir.join("empty.txt"))
         .map_err(|e| format!("empty.txt 読み込みエラー: {}", e))?;
@@ -598,12 +628,19 @@ fn zip_slip_entries_are_sanitized() -> Result<(), String> {
         .filter_map(|dir_entry| dir_entry.ok())
         .map(|dir_entry| dir_entry.file_name().to_string_lossy().to_string())
         .collect();
-    assert_eq!(outer_entries, vec!["extract".to_string()], "解凍先の外にファイルが作成されました");
+    assert_eq!(
+        outer_entries,
+        vec!["extract".to_string()],
+        "解凍先の外にファイルが作成されました"
+    );
 
     // 無害化されたエントリは解凍先の中に配置されること
     let sanitized_rel = fs::read(extract_root.join("evil.txt"))
         .map_err(|e| format!("無害化エントリ読み込みエラー: {}", e))?;
-    assert!(sanitized_rel == b"evil relative", "無害化された `../` エントリの内容が不一致です");
+    assert!(
+        sanitized_rel == b"evil relative",
+        "無害化された `../` エントリの内容が不一致です"
+    );
 
     // 絶対パスエントリはルート成分を除去して解凍先の中に配置されること
     let mut sanitized_abs = extract_root.clone();
@@ -614,7 +651,10 @@ fn zip_slip_entries_are_sanitized() -> Result<(), String> {
     }
     let sanitized_abs_data = fs::read(&sanitized_abs)
         .map_err(|e| format!("無害化された絶対パスエントリ読み込みエラー: {}", e))?;
-    assert!(sanitized_abs_data == b"evil absolute", "無害化された絶対パスエントリの内容が不一致です");
+    assert!(
+        sanitized_abs_data == b"evil absolute",
+        "無害化された絶対パスエントリの内容が不一致です"
+    );
 
     let good = fs::read(extract_root.join("good.txt"))
         .map_err(|e| format!("正常エントリ読み込みエラー: {}", e))?;
@@ -847,11 +887,11 @@ fn zip_shift_jis_names_extract_as_distinct_files() -> Result<(), String> {
         "Shift_JIS 名の衝突によりファイルが失われました: {:?}",
         extracted
     );
-    let got_a = fs::read(out_dir.join("あ.txt"))
-        .map_err(|e| format!("あ.txt 読み込みエラー: {}", e))?;
+    let got_a =
+        fs::read(out_dir.join("あ.txt")).map_err(|e| format!("あ.txt 読み込みエラー: {}", e))?;
     assert!(got_a == b"content A", "あ.txt の内容が不一致です");
-    let got_i = fs::read(out_dir.join("い.txt"))
-        .map_err(|e| format!("い.txt 読み込みエラー: {}", e))?;
+    let got_i =
+        fs::read(out_dir.join("い.txt")).map_err(|e| format!("い.txt 読み込みエラー: {}", e))?;
     assert!(got_i == b"content B", "い.txt の内容が不一致です");
 
     Ok(())
@@ -889,7 +929,11 @@ fn tar_long_japanese_names_do_not_panic_and_roundtrip() -> Result<(), String> {
 
         // 作成（旧実装はここでパニックしていた）
         let archive_path = dir.path().join(file_name);
-        ArchiveHandler::create_archive(std::slice::from_ref(&src_root), &archive_path, archive_type)?;
+        ArchiveHandler::create_archive(
+            std::slice::from_ref(&src_root),
+            &archive_path,
+            archive_type,
+        )?;
 
         // 一覧: PAX 経由で完全な名前が見えること
         let entries = ArchiveHandler::list_archive_contents(&archive_path)?;
@@ -912,7 +956,11 @@ fn tar_long_japanese_names_do_not_panic_and_roundtrip() -> Result<(), String> {
         ArchiveHandler::extract_archive(&archive_path, &out_dir)?;
         let got_a = fs::read(out_dir.join("src_root").join(&long_name))
             .map_err(|e| format!("解凍ファイル読み込みエラー ({}): {}", label, e))?;
-        assert!(got_a == content_a, "長い名前のファイル内容が不一致です ({})", label);
+        assert!(
+            got_a == content_a,
+            "長い名前のファイル内容が不一致です ({})",
+            label
+        );
         let got_b = fs::read(out_dir.join("src_root").join(&long_dir).join(&nested_name))
             .map_err(|e| format!("解凍ファイル読み込みエラー ({}): {}", label, e))?;
         assert!(
@@ -926,7 +974,12 @@ fn tar_long_japanese_names_do_not_panic_and_roundtrip() -> Result<(), String> {
 }
 
 /// レベル 0 ヘッダーの LZH エントリをバイト列で構築
-fn build_lzh_level0_entry(method: &[u8; 5], name_sjis: &[u8], original: &[u8], stored: &[u8]) -> Vec<u8> {
+fn build_lzh_level0_entry(
+    method: &[u8; 5],
+    name_sjis: &[u8],
+    original: &[u8],
+    stored: &[u8],
+) -> Vec<u8> {
     use oxiarc_core::Crc16;
 
     let header_size = 22 + name_sjis.len(); // method..crc16 (先頭 2 バイトを除く)
@@ -944,9 +997,7 @@ fn build_lzh_level0_entry(method: &[u8; 5], name_sjis: &[u8], original: &[u8], s
     entry.extend_from_slice(&Crc16::compute(original).to_le_bytes());
 
     // レベル 0 のチェックサムは先頭 2 バイトを除くヘッダーの単純加算
-    let checksum: u8 = entry[2..]
-        .iter()
-        .fold(0u8, |acc, &b| acc.wrapping_add(b));
+    let checksum: u8 = entry[2..].iter().fold(0u8, |acc, &b| acc.wrapping_add(b));
     entry[1] = checksum;
 
     entry.extend_from_slice(stored);
@@ -1030,7 +1081,10 @@ fn lzh_with_lhd_and_lh1_entries_lists_and_extracts() -> Result<(), String> {
     let out_dir = dir.path().join("out");
     ArchiveHandler::extract_archive(&lzh_path, &out_dir)?;
 
-    assert!(out_dir.join("サブ").is_dir(), "-lhd- ディレクトリが復元されていません");
+    assert!(
+        out_dir.join("サブ").is_dir(),
+        "-lhd- ディレクトリが復元されていません"
+    );
     let got_lh1 = fs::read(out_dir.join("サブ/hello.txt"))
         .map_err(|e| format!("lh1 解凍ファイル読み込みエラー: {}", e))?;
     assert!(
@@ -1063,13 +1117,25 @@ fn rar_disabled_returns_graceful_error() -> Result<(), String> {
 
     // 一覧・解凍ともにパニックせず、明確なエラーを返すこと
     let list_result = ArchiveHandler::list_archive_contents(&rar_path);
-    let list_err = list_result.err().ok_or("RAR の一覧がエラーになりませんでした")?;
-    assert!(list_err.contains("RAR"), "RAR 一覧エラーの内容が不明瞭です: {}", list_err);
+    let list_err = list_result
+        .err()
+        .ok_or("RAR の一覧がエラーになりませんでした")?;
+    assert!(
+        list_err.contains("RAR"),
+        "RAR 一覧エラーの内容が不明瞭です: {}",
+        list_err
+    );
 
     let out_dir = dir.path().join("out");
     let extract_result = ArchiveHandler::extract_archive(&rar_path, &out_dir);
-    let extract_err = extract_result.err().ok_or("RAR の解凍がエラーになりませんでした")?;
-    assert!(extract_err.contains("RAR"), "RAR 解凍エラーの内容が不明瞭です: {}", extract_err);
+    let extract_err = extract_result
+        .err()
+        .ok_or("RAR の解凍がエラーになりませんでした")?;
+    assert!(
+        extract_err.contains("RAR"),
+        "RAR 解凍エラーの内容が不明瞭です: {}",
+        extract_err
+    );
 
     Ok(())
 }

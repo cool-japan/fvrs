@@ -98,11 +98,14 @@ mod tests {
         // EFS フラグ付き UTF-8
         assert_eq!(decode_zip_name("日本語.txt".as_bytes(), true), "日本語.txt");
         // フラグ無し UTF-8（Linux 製 ZIP）
-        assert_eq!(decode_zip_name("日本語.txt".as_bytes(), false), "日本語.txt");
+        assert_eq!(
+            decode_zip_name("日本語.txt".as_bytes(), false),
+            "日本語.txt"
+        );
     }
 
     #[test]
-    fn zip_names_fall_back_to_cp437_injectively(){
+    fn zip_names_fall_back_to_cp437_injectively() {
         // UTF-8 でも Shift_JIS でも不正なバイト列 (0x81 は SJIS 先行バイトだが後続が不正)
         let x = [0x81, 0x20, 0x41];
         let y = [0x82, 0x20, 0x41];

@@ -39,7 +39,9 @@ fn write_file(path: &PathBuf, contents: &str) {
 async fn watcher_delivers_events() {
     let dir = unique_temp_dir("watch");
     let mut fs = FileSystem::new();
-    fs.watch_directory(&dir).await.expect("failed to start watching");
+    fs.watch_directory(&dir)
+        .await
+        .expect("failed to start watching");
 
     // Give the backend a moment to arm (FSEvents/inotify start asynchronously),
     // then keep touching the file until an event lands or we give up.
@@ -86,10 +88,7 @@ async fn hash_round_trip_all_algorithms() {
 
     let fs = FileSystem::new();
     let cases: [(HashAlgorithm, Option<&str>); 6] = [
-        (
-            HashAlgorithm::MD5,
-            Some("900150983cd24fb0d6963f7d28e17f72"),
-        ),
+        (HashAlgorithm::MD5, Some("900150983cd24fb0d6963f7d28e17f72")),
         (
             HashAlgorithm::SHA1,
             Some("a9993e364706816aba3e25717850c26c9cd0d89d"),
@@ -109,11 +108,7 @@ async fn hash_round_trip_all_algorithms() {
             .await
             .expect("hash calculation failed");
         assert_eq!(result.size, 3, "unexpected input size for {:?}", algorithm);
-        assert!(
-            !result.hash.is_empty(),
-            "empty hash for {:?}",
-            algorithm
-        );
+        assert!(!result.hash.is_empty(), "empty hash for {:?}", algorithm);
         if let Some(expected) = known_vector {
             assert_eq!(
                 result.hash, expected,
@@ -208,8 +203,7 @@ async fn copy_recursive_directory() {
         ("sub/deeper/c.txt", "deepest\n"),
     ] {
         let copied = dest.join(rel);
-        let contents =
-            std::fs::read_to_string(&copied).expect("copied file missing or unreadable");
+        let contents = std::fs::read_to_string(&copied).expect("copied file missing or unreadable");
         assert_eq!(contents, expected, "content mismatch for {:?}", copied);
     }
     assert!(
