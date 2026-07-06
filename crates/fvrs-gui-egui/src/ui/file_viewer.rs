@@ -43,17 +43,18 @@ impl FileViewerUI {
                     }
                     
                     // 保存ボタン（編集モードの場合）
-                    if app.state.view_mode_text && app.state.is_file_modified {
-                        if ui.button("💾 保存").clicked() {
-                            Self::save_file(app);
-                        }
+                    if app.state.view_mode_text
+                        && app.state.is_file_modified
+                        && ui.button("💾 保存").clicked()
+                    {
+                        Self::save_file(app);
                     }
-                    
+
                     // 行番号表示切替（編集モードのみ）
-                    if app.state.view_mode_text {
-                        if ui.button(if app.state.show_line_numbers { "🔢 行番号OFF" } else { "🔢 行番号ON" }).clicked() {
-                            app.state.show_line_numbers = !app.state.show_line_numbers;
-                        }
+                    if app.state.view_mode_text
+                        && ui.button(if app.state.show_line_numbers { "🔢 行番号OFF" } else { "🔢 行番号ON" }).clicked()
+                    {
+                        app.state.show_line_numbers = !app.state.show_line_numbers;
                     }
                     
                     // モード切替（バイナリファイルは編集不可）
@@ -260,7 +261,7 @@ impl FileViewerUI {
         let header = format!(
             "バイナリファイル - サイズ: {} バイト ({} KB)\n\n",
             data.len(),
-            (data.len() + 1023) / 1024
+            data.len().div_ceil(1024)
         );
         
         header + &result

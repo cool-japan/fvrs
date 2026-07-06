@@ -1,22 +1,16 @@
 use std::collections::{HashMap, VecDeque};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use tokio::runtime::Runtime;
-use fvrs_core::core::{FileEntry, FileSystem};
+use fvrs_core::core::FileEntry;
 use crate::state::{AppState, DragState, FileOperation, SortColumn};
-use crate::utils::setup_japanese_fonts;
+use crate::utils::{setup_japanese_fonts, MountCache};
 use crate::archive::{ArchiveHandler, ArchiveType};
-
-
-
 
 pub struct FileVisorApp {
     pub state: AppState,
-    pub file_system: Arc<Mutex<FileSystem>>,
-    pub runtime: Arc<Runtime>,
-    
+
     // キャッシュとパフォーマンス
     pub directory_cache: HashMap<PathBuf, Vec<FileEntry>>,
+    pub mount_cache: MountCache,
     pub _thumbnail_cache: HashMap<PathBuf, Vec<u8>>,
     
     // UI状態
@@ -52,17 +46,11 @@ impl FileVisorApp {
             AppState::default()
         };
 
-        let runtime = Arc::new(
-            tokio::runtime::Runtime::new()
-                .expect("tokio runtimeの作成に失敗")
-        );
-
         Self {
             address_bar_text: state.current_path.to_string_lossy().to_string(),
             state,
-            file_system: Arc::new(Mutex::new(FileSystem::new())),
-            runtime,
             directory_cache: HashMap::new(),
+            mount_cache: MountCache::new(),
             _thumbnail_cache: HashMap::new(),
             _search_active: false,
             _context_menu_pos: None,
@@ -155,11 +143,13 @@ impl FileVisorApp {
             }
         }
         
-        Ok(self.directory_cache.get(path).unwrap())
+        self.directory_cache
+            .get(path)
+            .ok_or_else(|| format!("ディレクトリキャッシュの取得に失敗しました: {}", path.display()))
     }
 
     /// ファイルソート
-    pub fn sort_entries(&self, entries: &mut Vec<FileEntry>) {
+    pub fn sort_entries(&self, entries: &mut [FileEntry]) {
         entries.sort_by(|a, b| {
             // ディレクトリを最初に
             if a.is_dir && !b.is_dir {
@@ -258,7 +248,7 @@ impl FileVisorApp {
                 match std::fs::remove_dir_all(path) {
                     Ok(_) => {
                         tracing::info!("フォルダを削除しました: {:?}", path);
-                        self._undo_stack.push(FileOperation::Delete { path: path.clone() });
+                        self._undo_stack.push(FileOperation::Delete);
                     }
                     Err(e) => tracing::error!("フォルダ削除エラー: {:?} at {:?}", e, path),
                 }
@@ -266,7 +256,7 @@ impl FileVisorApp {
                 match std::fs::remove_file(path) {
                     Ok(_) => {
                         tracing::info!("ファイルを削除しました: {:?}", path);
-                        self._undo_stack.push(FileOperation::Delete { path: path.clone() });
+                        self._undo_stack.push(FileOperation::Delete);
                     }
                     Err(e) => tracing::error!("ファイル削除エラー: {:?} at {:?}", e, path),
                 }
@@ -281,18 +271,6 @@ impl FileVisorApp {
         self.state.show_delete_dialog = false;
     }
 
-    /// フォルダ作成
-    pub fn create_new_folder(&mut self, name: &str) {
-        let new_path = self.state.current_path.join(name);
-        let fs = self.file_system.lock().unwrap();
-        if let Err(e) = self.runtime.block_on(fs.create_dir(&new_path)) {
-            tracing::error!("フォルダ作成エラー: {:?}", e);
-        } else {
-            self._undo_stack.push(FileOperation::CreateFolder { path: new_path });
-            self.directory_cache.remove(&self.state.current_path);
-        }
-    }
-    
     /// 新規ファイル作成
     pub fn create_new_file(&mut self, file_name: &str) {
         let new_file_path = self.state.current_path.join(file_name);
@@ -325,8 +303,8 @@ impl FileVisorApp {
         }
     }
     
-    /// 新規フォルダ作成（ダイアログ経由）
-    pub fn create_new_folder_dialog(&mut self, folder_name: &str) {
+    /// 新規フォルダ作成（新規フォルダダイアログから呼ばれる）
+    pub fn create_new_folder(&mut self, folder_name: &str) {
         let new_folder_path = self.state.current_path.join(folder_name);
         
         // フォルダが既に存在するかチェック

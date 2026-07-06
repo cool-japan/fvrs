@@ -1,10 +1,12 @@
 [package]
 name = "fvrs-core"
-version = "0.1.0"
-edition = "2021"
-authors = ["FVRS Team"]
-license = "MIT OR Apache-2.0"
-description = "Core file system operations and async runtime for FVRS"
+version.workspace = true
+edition.workspace = true
+rust-version.workspace = true
+authors.workspace = true
+license.workspace = true
+repository.workspace = true
+description.workspace = true
 
 [dependencies]
 tokio = { workspace = true }
@@ -12,22 +14,18 @@ thiserror = { workspace = true }
 anyhow = { workspace = true }
 chrono = { workspace = true }
 serde = { workspace = true }
-walkdir = "2.4"
-notify = "6.1"
-regex = "1.11"
-md5 = "0.7"
-hex = "0.4"
-glob = "0.3"
-serde_json = "1.0"
+walkdir = { workspace = true }
+notify = { workspace = true }
+regex = { workspace = true }
+md-5 = { workspace = true }
+hex = { workspace = true }
+glob = { workspace = true }
+serde_json = { workspace = true }
+sha1 = { workspace = true }
+sha2 = { workspace = true }
+blake3 = { workspace = true }
+ripemd = { workspace = true }
+tracing = { workspace = true }
+
+[target.'cfg(windows)'.dependencies]
 windows = { workspace = true }
-sha1 = "0.10"
-sha2 = "0.10"
-blake3 = "1.8"
-ripemd = "0.1"
-# zip = { version = "0.6.5", features = ["aes-crypto"] }
-flate2 = "1.0"
-tar = "0.4"
-xz2 = "0.1"
-# bzip2 = "0.4"
-aes = "0.8"
-cipher = "0.4" 

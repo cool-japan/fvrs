@@ -140,7 +140,7 @@ impl FileInfoCollector {
         
         // 簡略化：4KB クラスターサイズと仮定
         let cluster_size = 4096u64;
-        ((size + cluster_size - 1) / cluster_size) * cluster_size
+        size.div_ceil(cluster_size) * cluster_size
     }
     
     /// ファイル属性を取得
@@ -165,9 +165,9 @@ impl FileInfoCollector {
     
     /// SystemTimeをLocal DateTimeに変換
     fn system_time_to_local(time: Option<SystemTime>) -> Option<DateTime<Local>> {
-        time.and_then(|t| {
+        time.map(|t| {
             let datetime: DateTime<chrono::Utc> = t.into();
-            Some(datetime.with_timezone(&Local))
+            datetime.with_timezone(&Local)
         })
     }
     

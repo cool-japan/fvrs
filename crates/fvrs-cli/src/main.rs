@@ -1,7 +1,6 @@
 use fvrs_core::core::{FileSystem, MonitoringSettings, MonitoringFilter};
 use std::path::PathBuf;
 use std::env;
-use tokio;
 
 #[tokio::main]
 async fn main() -> Result<(), Box<dyn std::error::Error>> {
@@ -28,7 +27,7 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
             };
             
             println!("Listing files in: {}", path.display());
-            println!("{:<30} {:<15} {:<20} {}", "Name", "Size", "Modified", "Type");
+            println!("{:<30} {:<15} {:<20} Type", "Name", "Size", "Modified");
             println!("{:-<75}", "");
             
             match fs.list_files(Some(path)).await {
@@ -80,17 +79,13 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 return Ok(());
             }
             
-            // イベントを監視
-            loop {
-                if let Some(event) = fs.next_event() {
-                    println!("[{}] {:?}: {}", 
-                        event.timestamp.format("%H:%M:%S"),
-                        event.event_type,
-                        event.path.display()
-                    );
-                }
-                
-                tokio::time::sleep(tokio::time::Duration::from_millis(100)).await;
+            // イベントを監視 (async recv — no polling)
+            while let Some(event) = fs.next_event().await {
+                println!("[{}] {:?}: {}",
+                    event.timestamp.format("%H:%M:%S"),
+                    event.event_type,
+                    event.path.display()
+                );
             }
         }
         

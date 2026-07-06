@@ -2,6 +2,7 @@ use std::path::PathBuf;
 use egui::{Context, Color32, Stroke, Response};
 use crate::app::FileVisorApp;
 use crate::state::ActivePane;
+use crate::utils::mount_label;
 
 pub struct ExplorerTreeUI;
 
@@ -14,7 +15,7 @@ impl ExplorerTreeUI {
         let is_active = app.state.active_pane == ActivePane::LeftSidebar;
         
         // ペイン全体のスタイル設定
-        let frame = egui::Frame::side_top_panel(&ui.style())
+        let frame = egui::Frame::side_top_panel(ui.style())
             .stroke(if is_active {
                 Stroke::new(2.0, Color32::from_rgb(0, 120, 215)) // 青い枠
             } else {
@@ -37,56 +38,33 @@ impl ExplorerTreeUI {
     
     fn show_drives(ui: &mut egui::Ui, app: &mut FileVisorApp) {
         ui.label("💾 ドライブ");
-        
-        // Windowsドライブ一覧
-        for drive in ["C:", "D:", "E:", "F:", "G:", "H:"].iter() {
-            let drive_path = PathBuf::from(format!("{}\\", drive));
-            if drive_path.exists() {
-                let is_selected = app.state.sidebar_selected_item
-                    .as_ref()
-                    .map(|p| p.starts_with(&drive_path))
-                    .unwrap_or(false);
-                
-                let is_current = app.state.current_path.starts_with(&drive_path);
-                
-                let response = ui.selectable_label(
-                    is_selected,
-                    format!("💾 {}", drive)
-                );
-                
-                if response.clicked() {
-                    app.state.active_pane = ActivePane::LeftSidebar;
-                    app.state.sidebar_selected_item = Some(drive_path.clone());
-                    
-                    if response.double_clicked() {
-                        app.navigate_to(drive_path);
-                    }
-                }
-                
-                // 現在のパスを薄く表示
-                if is_current && !is_selected {
-                    response.highlight();
-                }
-            }
-        }
-        
-        // Unixルートディスクトリ
-        if cfg!(unix) {
-            let root_path = PathBuf::from("/");
+
+        // 実行時に列挙したマウントポイント（ドライブ・ボリューム）一覧
+        // （TTL 付きキャッシュ経由 — 毎フレームのボリューム stat を避ける）
+        let mounts: Vec<PathBuf> = app.mount_cache.mounts().to_vec();
+        for mount_path in mounts {
             let is_selected = app.state.sidebar_selected_item
                 .as_ref()
-                .map(|p| *p == root_path)
+                .map(|p| *p == mount_path)
                 .unwrap_or(false);
-            
-            let response = ui.selectable_label(is_selected, "💾 /");
-            
+
+            let is_current = app.state.current_path.starts_with(&mount_path);
+
+            let response = ui.selectable_label(
+                is_selected,
+                format!("💾 {}", mount_label(&mount_path))
+            );
+
             if response.clicked() {
                 app.state.active_pane = ActivePane::LeftSidebar;
-                app.state.sidebar_selected_item = Some(root_path.clone());
-                
-                if response.double_clicked() {
-                    app.navigate_to(root_path);
-                }
+                app.state.sidebar_selected_item = Some(mount_path.clone());
+            }
+
+            if response.double_clicked() {
+                app.navigate_to(mount_path);
+            } else if is_current && !is_selected {
+                // 現在のパスを薄く表示
+                response.highlight();
             }
         }
     }

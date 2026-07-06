@@ -2,6 +2,7 @@
 name = "fvrs-cli"
 version.workspace = true
 edition.workspace = true
+rust-version.workspace = true
 authors.workspace = true
 license.workspace = true
 repository.workspace = true
@@ -12,5 +13,5 @@ name = "fvrs"
 path = "src/main.rs"
 
 [dependencies]
-fvrs-core = { path = "../fvrs-core" }
-tokio = { version = "1.36", features = ["full"] } 
+fvrs-core = { workspace = true }
+tokio = { workspace = true }

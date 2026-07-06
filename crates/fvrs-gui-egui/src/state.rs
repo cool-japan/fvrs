@@ -94,34 +94,34 @@ pub enum ClipboardOperation {
     Copy(Vec<PathBuf>),
 }
 
+/// ドラッグ状態
+///
+/// P1 で未使用の `Dragging` バリアントを削除した。
+/// ドラッグ＆ドロップ実装（P2）とともに再構築する。
 #[derive(Debug, Clone)]
 pub enum DragState {
     None,
-    Dragging { items: Vec<PathBuf>, start_pos: egui::Pos2 },
 }
 
+/// アンドゥ・リドゥ対象のファイル操作
+///
+/// P1 で未構築の `Move` / `Copy` / `Rename` / `CreateFolder` バリアントと
+/// 未読の `path` フィールドを削除した。コピー・移動エンジンの再構築（P2）で
+/// 必要なペイロードごと設計し直す。
 #[derive(Debug, Clone)]
 pub enum FileOperation {
-    Move { from: PathBuf, to: PathBuf },
-    Copy { from: PathBuf, to: PathBuf },
-    Delete { path: PathBuf },
-    Rename { from: PathBuf, to: PathBuf },
-    CreateFolder { path: PathBuf },
+    Delete,
 }
 
 impl Default for AppState {
     fn default() -> Self {
-        // より安全なデフォルトパス選択
+        // より安全なデフォルトパス選択:
+        // カレントディレクトリ → ホーム → 実行時に列挙した先頭マウント → ルート
         let default_path = std::env::current_dir()
-            .or_else(|_| std::env::home_dir().ok_or_else(|| std::io::Error::new(std::io::ErrorKind::NotFound, "Home directory not found")))
-            .unwrap_or_else(|_| {
-                // Windows環境でのフォールバック
-                if cfg!(windows) {
-                    PathBuf::from("C:\\Users")
-                } else {
-                    PathBuf::from("/")
-                }
-            });
+            .ok()
+            .or_else(std::env::home_dir)
+            .or_else(|| crate::utils::available_mounts().into_iter().next())
+            .unwrap_or_else(|| PathBuf::from(std::path::MAIN_SEPARATOR_STR));
             
         Self {
             current_path: default_path,

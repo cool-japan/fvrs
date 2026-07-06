@@ -1,3 +1,4 @@
+pub mod app_shell;
 pub mod file_list;
 pub mod dialogs;
 pub mod shortcuts;

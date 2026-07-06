@@ -457,6 +457,8 @@ impl DialogsUI {
                             ui.selectable_value(&mut app.state.pack_format, ArchiveType::Zip, "ZIP");
                             ui.selectable_value(&mut app.state.pack_format, ArchiveType::Tar, "TAR");
                             ui.selectable_value(&mut app.state.pack_format, ArchiveType::TarGz, "TAR.GZ");
+                            ui.selectable_value(&mut app.state.pack_format, ArchiveType::TarBz2, "TAR.BZ2");
+                            ui.selectable_value(&mut app.state.pack_format, ArchiveType::Lzh, "LZH");
                         });
                     ui.add_space(10.0);
                     

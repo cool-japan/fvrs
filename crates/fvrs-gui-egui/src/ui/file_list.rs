@@ -7,25 +7,64 @@ use crate::utils::{format_file_size, format_time};
 
 pub struct FileListUI;
 
+/// `show_file_list` に渡すパラメータ一式(引数過多を避けるための束ね構造体)
+pub struct FileListParams<'a> {
+    /// 表示対象のエントリ(フィルタ済み)
+    pub entries: &'a [&'a FileEntry],
+    /// 現在のビューモード
+    pub view_mode: ViewMode,
+    /// 現在表示中のディレクトリ
+    pub current_path: &'a Path,
+    /// 選択中アイテムのパス集合
+    pub selected_items: &'a mut Vec<std::path::PathBuf>,
+    /// 直近に選択した行インデックス(Shift 範囲選択用)
+    pub last_selected_index: &'a mut Option<usize>,
+    /// ソート対象カラム
+    pub sort_column: &'a mut SortColumn,
+    /// 昇順ソートかどうか
+    pub sort_ascending: &'a mut bool,
+    /// ディレクトリ一覧キャッシュ(ソート変更時に無効化する)
+    pub directory_cache: &'a mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
+    /// ディレクトリ移動コールバック
+    pub navigate_callback: &'a mut dyn FnMut(std::path::PathBuf),
+    /// ファイルオープンコールバック
+    pub file_open_callback: &'a mut dyn FnMut(std::path::PathBuf),
+    /// 現在アクティブなペイン
+    pub active_pane: &'a ActivePane,
+    /// メインペインのアクティブ化コールバック
+    pub pane_activate_callback: &'a mut dyn FnMut(),
+}
+
+/// 各ビュー(詳細/リスト/グリッド)共通の描画パラメータ
+struct ViewParams<'a> {
+    entries: &'a [&'a FileEntry],
+    current_path: &'a Path,
+    selected_items: &'a mut Vec<std::path::PathBuf>,
+    last_selected_index: &'a mut Option<usize>,
+    navigate_callback: &'a mut dyn FnMut(std::path::PathBuf),
+    file_open_callback: &'a mut dyn FnMut(std::path::PathBuf),
+}
+
 impl FileListUI {
     /// ファイルリスト表示のメイン関数
-    pub fn show_file_list(
-        ui: &mut egui::Ui,
-        entries: &[&FileEntry],
-        view_mode: ViewMode,
-        current_path: &Path,
-        selected_items: &mut Vec<std::path::PathBuf>,
-        last_selected_index: &mut Option<usize>,
-        sort_column: &mut SortColumn,
-        sort_ascending: &mut bool,
-        directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
-        navigate_callback: &mut dyn FnMut(std::path::PathBuf),
-        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
-        active_pane: &ActivePane,
-        pane_activate_callback: &mut dyn FnMut(),
-    ) {
+    pub fn show_file_list(ui: &mut egui::Ui, params: FileListParams<'_>) {
+        let FileListParams {
+            entries,
+            view_mode,
+            current_path,
+            selected_items,
+            last_selected_index,
+            sort_column,
+            sort_ascending,
+            directory_cache,
+            navigate_callback,
+            file_open_callback,
+            active_pane,
+            pane_activate_callback,
+        } = params;
+
         let is_active = *active_pane == ActivePane::MainList;
-        
+
         // ペイン全体にフレームを適用してアクティブ状態を視覚化
         let frame = egui::Frame::default()
             .stroke(if is_active {
@@ -33,22 +72,26 @@ impl FileListUI {
             } else {
                 Stroke::new(1.0, Color32::GRAY) // グレーの枠
             });
-            
+
+        let view = ViewParams {
+            entries,
+            current_path,
+            selected_items,
+            last_selected_index,
+            navigate_callback,
+            file_open_callback,
+        };
+
         let response = frame.show(ui, |ui| {
             match view_mode {
                 ViewMode::Details => Self::show_details_view(
-                    ui, entries, current_path, selected_items, last_selected_index,
-                    sort_column, sort_ascending, directory_cache, navigate_callback, file_open_callback
+                    ui, view, sort_column, sort_ascending, directory_cache,
                 ),
-                ViewMode::List => Self::show_list_view(
-                    ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
-                ),
-                ViewMode::Grid => Self::show_grid_view(
-                    ui, entries, current_path, selected_items, last_selected_index, navigate_callback, file_open_callback
-                ),
+                ViewMode::List => Self::show_list_view(ui, view),
+                ViewMode::Grid => Self::show_grid_view(ui, view),
             }
         });
-        
+
         // フレームがクリックされたらペインをアクティブ化
         if response.response.clicked() {
             pane_activate_callback();
@@ -58,16 +101,20 @@ impl FileListUI {
     /// 詳細ビュー
     fn show_details_view(
         ui: &mut egui::Ui,
-        entries: &[&FileEntry],
-        current_path: &Path,
-        selected_items: &mut Vec<std::path::PathBuf>,
-        last_selected_index: &mut Option<usize>,
+        view: ViewParams<'_>,
         sort_column: &mut SortColumn,
         sort_ascending: &mut bool,
         directory_cache: &mut std::collections::HashMap<std::path::PathBuf, Vec<FileEntry>>,
-        navigate_callback: &mut dyn FnMut(std::path::PathBuf),
-        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
     ) {
+        let ViewParams {
+            entries,
+            current_path,
+            selected_items,
+            last_selected_index,
+            navigate_callback,
+            file_open_callback,
+        } = view;
+
         let table = TableBuilder::new(ui)
             .striped(true)
             .resizable(true)
@@ -170,7 +217,7 @@ impl FileListUI {
                             }
                         }
                         if name_response.clicked() {
-                            let modifiers = ui.input(|i| i.modifiers.clone());
+                            let modifiers = ui.input(|i| i.modifiers);
                             
                             if modifiers.shift {
                                 // Shift+クリック: 範囲選択
@@ -237,15 +284,16 @@ impl FileListUI {
     }
 
     /// リストビュー
-    fn show_list_view(
-        ui: &mut egui::Ui,
-        entries: &[&FileEntry],
-        current_path: &Path,
-        selected_items: &mut Vec<std::path::PathBuf>,
-        last_selected_index: &mut Option<usize>,
-        navigate_callback: &mut dyn FnMut(std::path::PathBuf),
-        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
-    ) {
+    fn show_list_view(ui: &mut egui::Ui, view: ViewParams<'_>) {
+        let ViewParams {
+            entries,
+            current_path,
+            selected_items,
+            last_selected_index,
+            navigate_callback,
+            file_open_callback,
+        } = view;
+
         egui::ScrollArea::vertical().show(ui, |ui| {
             for (row_index, entry) in entries.iter().enumerate() {
                 let entry_path = current_path.join(&entry.name);
@@ -265,7 +313,7 @@ impl FileListUI {
                     }
                     
                     if response.clicked() {
-                        let modifiers = ui.input(|i| i.modifiers.clone());
+                        let modifiers = ui.input(|i| i.modifiers);
                         
                         if modifiers.shift {
                             // Shift+クリック: 範囲選択
@@ -308,15 +356,16 @@ impl FileListUI {
     }
 
     /// グリッドビュー
-    fn show_grid_view(
-        ui: &mut egui::Ui,
-        entries: &[&FileEntry],
-        current_path: &Path,
-        selected_items: &mut Vec<std::path::PathBuf>,
-        last_selected_index: &mut Option<usize>,
-        navigate_callback: &mut dyn FnMut(std::path::PathBuf),
-        file_open_callback: &mut dyn FnMut(std::path::PathBuf),
-    ) {
+    fn show_grid_view(ui: &mut egui::Ui, view: ViewParams<'_>) {
+        let ViewParams {
+            entries,
+            current_path,
+            selected_items,
+            last_selected_index,
+            navigate_callback,
+            file_open_callback,
+        } = view;
+
         const ITEM_SIZE: f32 = 80.0;
         const SPACING: f32 = 10.0;
         
@@ -359,7 +408,7 @@ impl FileListUI {
                                 }
                                 
                                 if icon_response.clicked() || name_response.clicked() {
-                                    let modifiers = ui.input(|i| i.modifiers.clone());
+                                    let modifiers = ui.input(|i| i.modifiers);
                                     
                                     if modifiers.shift {
                                         // Shift+クリック: 範囲選択

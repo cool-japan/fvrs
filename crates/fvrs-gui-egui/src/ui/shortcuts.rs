@@ -438,25 +438,4 @@ impl ShortcutHandler {
         app.state.show_shortcuts_dialog = true;
         tracing::info!("ショートカットキー一覧を表示");
     }
-
-    pub fn get_shortcut_description() -> Vec<(&'static str, &'static str)> {
-        vec![
-            ("A-Z", "頭文字検索"),
-            ("Enter", "開く"),
-            ("Backspace", "親ディレクトリ"),
-            ("Del", "削除"),
-            ("F2", "名前変更"),
-            ("F5", "更新"),
-            ("H", "ヘルプ"),
-            ("N", "新規ファイル作成"),
-            ("K", "新規フォルダ作成"),
-            ("U", "解凍 (Unpack)"),
-            ("P", "圧縮 (Pack)"),
-            ("V", "表示/圧縮ファイル中身"),
-            ("R", "名前変更 (Rename)"),
-            ("C", "複製"),
-            ("M", "移動"),
-            ("S", "圧縮書庫作成"),
-        ]
-    }
 } 
