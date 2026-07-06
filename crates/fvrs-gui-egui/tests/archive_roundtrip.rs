@@ -1,6 +1,7 @@
 //! ArchiveHandler (oxiarc バックエンド) の回帰テスト
 //!
 //! - 作成可能な形式 (ZIP / TAR / TAR.GZ / TAR.BZ2 / LZH) のラウンドトリップ
+//!   （日本語名の厳密一致を含む。LZH は lh5 で実際に圧縮されることも検証）
 //! - 解凍専用形式 (GZ / 7Z) の一覧・解凍（内容のバイト一致を含む）
 //! - 7Z 一覧表示が一時ディレクトリを汚染しないこと（旧実装の回帰確認）
 //! - 7Z のサブストリーム・空ファイル・ディレクトリの取り扱い
@@ -255,9 +256,64 @@ fn tar_bz2_roundtrip() -> Result<(), String> {
 
 #[test]
 fn lzh_roundtrip() -> Result<(), String> {
-    // 自前の LZH ライター/リーダーは Shift_JIS で対称に符号化するため
-    // 日本語名も厳密一致でラウンドトリップする
+    // oxiarc 0.3.4 はレベル 2 ヘッダーの Shift_JIS 名を対称に符号化するため
+    // 日本語名も厳密一致（名前・サイズ・内容）でラウンドトリップする
     roundtrip("lzh", "test.lzh", ArchiveType::Lzh)
+}
+
+/// 回帰: LZH 作成が実際に圧縮する（lh5、Store フォールバックではない）こと
+///
+/// oxiarc 0.3.3 の lh5 エンコーダーは破損データを生成していたため
+/// fvrs は一時的に全エントリを lh0（無圧縮）で格納していた。
+/// 0.3.4 で修正されたため、圧縮可能な入力ではアーカイブが元データより
+/// 小さくなることを検証し、あわせて内容のバイト一致も確認する。
+#[test]
+fn lzh_compresses_compressible_input() -> Result<(), String> {
+    let dir = TestDir::new("lzh_compress")?;
+    let src_root = dir.path().join("src_root");
+    fs::create_dir_all(&src_root).map_err(|e| format!("ソースディレクトリ作成エラー: {}", e))?;
+
+    // 高冗長な圧縮可能データ（約 128KB）
+    let payload = "圧縮可能な繰り返しテキスト。compressible repeated text. "
+        .repeat(1600)
+        .into_bytes();
+    fs::write(src_root.join("compressible.txt"), &payload)
+        .map_err(|e| format!("ソースファイル書き込みエラー: {}", e))?;
+
+    let archive_path = dir.path().join("compress.lzh");
+    ArchiveHandler::create_archive(
+        std::slice::from_ref(&src_root),
+        &archive_path,
+        ArchiveType::Lzh,
+    )?;
+
+    let archive_len = fs::metadata(&archive_path)
+        .map_err(|e| format!("アーカイブメタデータ取得エラー: {}", e))?
+        .len();
+    assert!(
+        archive_len < payload.len() as u64,
+        "LZH が圧縮されていません (アーカイブ {} バイト >= 元データ {} バイト): \
+         lh5 ではなく無圧縮格納にフォールバックしている可能性があります",
+        archive_len,
+        payload.len()
+    );
+
+    // 一覧のサイズが元サイズであること（lh5 でも size は解凍後サイズ）
+    let entries = ArchiveHandler::list_archive_contents(&archive_path)?;
+    let entry = entries
+        .iter()
+        .find(|e| e.name.trim_end_matches('/') == "src_root/compressible.txt")
+        .ok_or("一覧に compressible.txt がありません")?;
+    assert_eq!(entry.size, payload.len() as u64, "一覧のサイズが不正です");
+
+    // 解凍して内容がバイト一致すること
+    let out_dir = dir.path().join("out");
+    ArchiveHandler::extract_archive(&archive_path, &out_dir)?;
+    let got = fs::read(out_dir.join("src_root/compressible.txt"))
+        .map_err(|e| format!("解凍ファイル読み込みエラー: {}", e))?;
+    assert!(got == payload, "lh5 解凍後の内容が不一致です");
+
+    Ok(())
 }
 
 #[test]
@@ -1013,14 +1069,14 @@ fn build_lzh_level0_entry(
 /// 解凍時のみスキップする（旧 delharc 実装と同じ動作）ことも検証する。
 #[test]
 fn lzh_with_lhd_and_lh1_entries_lists_and_extracts() -> Result<(), String> {
-    use fvrs_gui_egui::archive::lzhuf1;
+    use oxiarc_lzhuf::lh1::encode_lh1_literals;
 
     let dir = TestDir::new("lzh_lhd_lh1")?;
 
     // "サブ" (0x83 0x54 0x83 0x75) — Shift_JIS のディレクトリ名
     let dir_name_sjis: &[u8] = &[0x83, 0x54, 0x83, 0x75];
     let lh1_content = "lh1 で圧縮された日本語コンテンツ。LZHUF adaptive Huffman.".repeat(8);
-    let lh1_encoded = lzhuf1::encode_lh1_literals(lh1_content.as_bytes());
+    let lh1_encoded = encode_lh1_literals(lh1_content.as_bytes());
     let lh0_content = b"plain stored file (lh0)".to_vec();
 
     let mut archive: Vec<u8> = Vec::new();
@@ -1058,9 +1114,10 @@ fn lzh_with_lhd_and_lh1_entries_lists_and_extracts() -> Result<(), String> {
     // 一覧: 全エントリ（未対応方式を含む）が列挙されること
     let entries = ArchiveHandler::list_archive_contents(&lzh_path)?;
     assert_eq!(entries.len(), 4, "LZH の一覧は 4 エントリのはずです");
+    // oxiarc 0.3.4 はディレクトリエントリ名を末尾スラッシュ付きに正規化する
     let dir_entry = entries
         .iter()
-        .find(|e| e.name == "サブ")
+        .find(|e| e.name.trim_end_matches('/') == "サブ")
         .ok_or("一覧に -lhd- ディレクトリエントリがありません")?;
     assert!(dir_entry.is_dir, "-lhd- がディレクトリ扱いではありません");
     let lh1_entry = entries

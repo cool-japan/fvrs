@@ -3,22 +3,10 @@ use std::io::Cursor;
 use std::path::{Path, PathBuf};
 
 use oxiarc_archive::{
-    CabReader, GzipReader, TarHeader, TarReader, TarWriter, ZipReader, ZipWriter,
+    CabReader, GzipReader, LzhMethod, LzhReader, LzhWriter, SevenZReader, TarHeader, TarReader,
+    TarWriter, ZipReader, ZipWriter,
 };
-use oxiarc_core::Entry;
-
-mod bzip2_compat;
-mod lzh;
-#[doc(hidden)]
-pub mod lzhuf1;
-mod lzma_compat;
-mod name_codec;
-mod sevenz;
-mod zip_names;
-
-/// TAR の ustar name フィールドに安全に収まる最大バイト数
-/// （oxiarc の `write_string` は NUL 終端用に 1 バイト確保するため 100 ではなく 99）
-const TAR_NAME_MAX: usize = 99;
+use oxiarc_core::{Crc16, Entry, OxiArcError};
 
 /// サポートする圧縮ファイル形式
 #[derive(Debug, Clone, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -159,32 +147,15 @@ impl ArchiveHandler {
         let file = File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
         let zip = ZipReader::new(file).map_err(|e| format!("ZIP読み込みエラー: {}", e))?;
 
-        // oxiarc は Shift_JIS 名を lossy 復号して潰すため、生バイト列から復元する
-        let mut entries = zip.entries().to_vec();
-        zip_names::refine_entry_names(file_path, &mut entries);
-
-        Ok(entries.iter().map(Self::to_archive_entry).collect())
+        Ok(zip.entries().iter().map(Self::to_archive_entry).collect())
     }
 
     /// LZH ファイルの内容を一覧表示
     fn list_lzh_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
-        let mut file =
-            File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-        let entries = lzh::read_entries(&mut file)?;
+        let file = File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
+        let lzh = LzhReader::new(file).map_err(|e| format!("LZH読み込みエラー: {}", e))?;
 
-        Ok(entries
-            .iter()
-            .map(|entry| ArchiveEntry {
-                name: entry.name.clone(),
-                path: PathBuf::from(&entry.name),
-                size: entry.size,
-                compressed_size: entry.compressed_size,
-                is_dir: entry.is_dir,
-                modified: entry
-                    .mtime_unix
-                    .and_then(|secs| chrono::DateTime::from_timestamp(secs, 0)),
-            })
-            .collect())
+        Ok(lzh.entries().iter().map(Self::to_archive_entry).collect())
     }
 
     /// TAR ファイルの内容を一覧表示
@@ -208,13 +179,10 @@ impl ArchiveHandler {
     }
 
     /// TAR.BZ2 ファイルの内容を一覧表示
-    ///
-    /// bzip2 の復号は自前実装（`bzip2_compat`）を使用する。oxiarc-bzip2 0.3.3 は
-    /// 実 libbz2 ストリームと非互換で、実在の .tar.bz2 を一切読めないため。
     fn list_tar_bz2_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
         let compressed =
             std::fs::read(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-        let data = bzip2_compat::decompress(&compressed)
+        let data = oxiarc_archive::bzip2::decompress(&compressed)
             .map_err(|e| format!("TAR.BZ2読み込みエラー: {}", e))?;
         let tar = TarReader::new(Cursor::new(data))
             .map_err(|e| format!("TAR.BZ2読み込みエラー: {}", e))?;
@@ -252,16 +220,19 @@ impl ArchiveHandler {
     fn list_7z_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
         let file = File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
         let sevenz =
-            sevenz::SevenZArchive::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
+            SevenZReader::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
 
         Ok(sevenz
-            .entries()
+            .sevenz_entries()
             .iter()
             .map(|entry| ArchiveEntry {
                 name: entry.name.clone(),
                 path: PathBuf::from(&entry.name),
                 size: entry.size,
-                compressed_size: entry.packed_size,
+                // oxiarc の 7z はエントリ単位の圧縮後サイズを公開しない
+                // （ソリッドフォルダーでは定義できない）ため、CAB と同じく
+                // 非圧縮サイズで近似する（一覧の 0 表示回避）
+                compressed_size: if entry.is_dir { 0 } else { entry.size },
                 is_dir: entry.is_dir,
                 modified: entry.mtime.map(chrono::DateTime::<chrono::Utc>::from),
             })
@@ -369,11 +340,7 @@ impl ArchiveHandler {
             File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
         let mut zip = ZipReader::new(file).map_err(|e| format!("ZIP読み込みエラー: {}", e))?;
 
-        // Shift_JIS 名の衝突（U+FFFD 潰れによる上書き消失）を防ぐため名前を復元する。
-        // 抽出自体は Entry::offset ベースのため名前の置き換えは抽出に影響しない。
-        let mut entries = zip.entries().to_vec();
-        zip_names::refine_entry_names(archive_path, &mut entries);
-
+        let entries = zip.entries().to_vec();
         for entry in &entries {
             let Some(outpath) = Self::safe_output_path(extract_to, entry) else {
                 continue;
@@ -398,33 +365,35 @@ impl ArchiveHandler {
 
     /// LZH ファイルを解凍
     fn extract_lzh(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
-        let mut file =
+        let file =
             File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-        let entries = lzh::read_entries(&mut file)?;
+        let mut lzh = LzhReader::new(file).map_err(|e| format!("LZH読み込みエラー: {}", e))?;
 
-        for entry in &entries {
-            let Some(outpath) = Self::safe_output_path_for_name(extract_to, &entry.name) else {
+        for entry in lzh.entries() {
+            let Some(outpath) = Self::safe_output_path(extract_to, &entry) else {
                 continue;
             };
 
-            if entry.is_dir {
+            if entry.is_dir() {
                 std::fs::create_dir_all(&outpath)
                     .map_err(|e| format!("ディレクトリ作成エラー: {}", e))?;
             } else {
-                // CRC-16 検証は read_entry_data 内部で実施される
-                match lzh::read_entry_data(&mut file, entry)? {
-                    lzh::LzhData::Ok(data) => {
+                // CRC-16 検証は extract 内部で実施される。未対応の圧縮方式は
+                // 一覧に出しつつ解凍時のみスキップし、残りの解凍を継続する。
+                match lzh.extract_to_vec(&entry) {
+                    Ok(data) => {
                         Self::ensure_parent_dir(&outpath)?;
                         std::fs::write(&outpath, data)
                             .map_err(|e| format!("ファイル書き込みエラー: {}", e))?;
                     }
-                    lzh::LzhData::Unsupported(method) => {
+                    Err(OxiArcError::UnsupportedMethod { method }) => {
                         tracing::warn!(
                             "未対応の圧縮方式 ({}) のファイルをスキップ: {}",
                             method,
                             entry.name
                         );
                     }
+                    Err(e) => return Err(format!("LZH解凍エラー: {}", e)),
                 }
             }
         }
@@ -487,7 +456,7 @@ impl ArchiveHandler {
     fn extract_tar_bz2(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
         let compressed =
             std::fs::read(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-        let data = bzip2_compat::decompress(&compressed)
+        let data = oxiarc_archive::bzip2::decompress(&compressed)
             .map_err(|e| format!("TAR.BZ2読み込みエラー: {}", e))?;
         let mut tar = TarReader::new(Cursor::new(data))
             .map_err(|e| format!("TAR.BZ2読み込みエラー: {}", e))?;
@@ -534,11 +503,11 @@ impl ArchiveHandler {
         let file =
             File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
         let mut sevenz =
-            sevenz::SevenZArchive::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
+            SevenZReader::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
 
-        for index in 0..sevenz.entries().len() {
+        for index in 0..sevenz.sevenz_entries().len() {
             let (name, is_dir, is_anti) = {
-                let entry = &sevenz.entries()[index];
+                let entry = &sevenz.sevenz_entries()[index];
                 (entry.name.clone(), entry.is_dir, entry.is_anti)
             };
 
@@ -559,7 +528,7 @@ impl ArchiveHandler {
 
                 // 空ファイルを含め CRC 検証済みのデータが返る
                 let data = sevenz
-                    .read_file_data(index)
+                    .extract(index)
                     .map_err(|e| format!("7Z解凍エラー: {}", e))?;
                 std::fs::write(&outpath, data)
                     .map_err(|e| format!("ファイル書き込みエラー: {}", e))?;
@@ -801,16 +770,16 @@ impl ArchiveHandler {
         Ok(())
     }
 
-    /// LZH ファイルを作成
+    /// LZH ファイルを作成（レベル 2 ヘッダー・Shift_JIS 名・lh5 圧縮）
     ///
-    /// oxiarc-archive 0.3.3 の `LzhWriter` は名前を UTF-8 生バイトで書き込み、
-    /// LZH の慣習 (Shift_JIS) と非互換で日本語名が再オープン時に化けるため、
-    /// 自前ライター（レベル 2 ヘッダー・Shift_JIS 名・lh0 格納）を使用する。
-    /// lh0 格納なのは oxiarc の lh5 エンコーダーに 8KB 超データの往復破損が
-    /// あるためで、上流修正までデータの完全性を優先する。
+    /// 元ファイルの更新時刻を保持するため `add_file_raw` を使用する
+    /// （`add_file` / `add_directory` は現在時刻を書き込むため）。
+    /// 圧縮して小さくならない場合は lh0 格納へフォールバックする
+    /// （oxiarc の `add_file` と同じ判定）。
     fn create_lzh(source_paths: &[PathBuf], archive_path: &Path) -> Result<(), String> {
         let file = File::create(archive_path).map_err(|e| format!("ファイル作成エラー: {}", e))?;
-        let mut lzh = lzh::LzhWriter2::new(file);
+        // 既定はレベル 2 ヘッダー（Shift_JIS 名・ディレクトリは -lhd-）
+        let mut lzh = LzhWriter::new(file);
 
         for source_path in source_paths {
             Self::add_sources_recursively(source_path, "", &mut |name, path, is_dir| {
@@ -818,13 +787,28 @@ impl ArchiveHandler {
                     .and_then(|secs| u32::try_from(secs).ok())
                     .unwrap_or(0);
                 if is_dir {
-                    lzh.add_directory(name, mtime)
+                    lzh.add_file_raw(name, LzhMethod::Lhd, 0, 0, &[], mtime, None)
                         .map_err(|e| format!("LZHディレクトリ追加エラー: {}", e))
                 } else {
                     let data = std::fs::read(path)
                         .map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-                    lzh.add_file(name, &data, mtime)
-                        .map_err(|e| format!("LZHファイル追加エラー: {}", e))
+                    let compressed = oxiarc_lzhuf::encode_lzh(&data, LzhMethod::Lh5)
+                        .map_err(|e| format!("LZH圧縮エラー: {}", e))?;
+                    let (method, payload) = if compressed.len() < data.len() {
+                        (LzhMethod::Lh5, compressed)
+                    } else {
+                        (LzhMethod::Lh0, data.clone())
+                    };
+                    lzh.add_file_raw(
+                        name,
+                        method,
+                        Crc16::compute(&data),
+                        data.len() as u64,
+                        &payload,
+                        mtime,
+                        None,
+                    )
+                    .map_err(|e| format!("LZHファイル追加エラー: {}", e))
                 }
             })?;
         }
@@ -834,73 +818,10 @@ impl ArchiveHandler {
         Ok(())
     }
 
-    /// PAX 拡張ヘッダーの path レコードを構築する（"長さ path=値\n" 形式）
-    fn pax_path_record(path: &str) -> Vec<u8> {
-        // レコード長は自身の桁数を含むため不動点を求める
-        let base = 1 + "path=".len() + path.len() + 1; // 空白 + キー + 値 + 改行
-        let mut total = base + 1;
-        loop {
-            let digits = total.to_string().len();
-            if digits + base == total {
-                break;
-            }
-            total = digits + base;
-        }
-        format!("{} path={}\n", total, path).into_bytes()
-    }
-
-    /// ustar name フィールド用のフォールバック名（末尾を文字境界で切り詰める）
-    fn tar_fallback_name(name: &str) -> String {
-        let had_trailing_slash = name.ends_with('/');
-        let trimmed = name.trim_end_matches('/');
-        let budget = if had_trailing_slash {
-            TAR_NAME_MAX - 1
-        } else {
-            TAR_NAME_MAX
-        };
-        let mut start = trimmed.len().saturating_sub(budget);
-        while start < trimmed.len() && !trimmed.is_char_boundary(start) {
-            start += 1;
-        }
-        let mut fallback = trimmed[start..].to_string();
-        if had_trailing_slash {
-            fallback.push('/');
-        }
-        if fallback.trim_end_matches('/').is_empty() {
-            fallback = "long_name".to_string();
-        }
-        fallback
-    }
-
-    /// 長い名前を PAX 拡張ヘッダーで安全に処理しつつ TAR エントリを書き込む
-    ///
-    /// oxiarc の `TarHeader::to_block` は名前が 100 バイトを超えると
-    /// `name[..155]` のスライスで文字境界を無視してパニックする
-    /// （日本語ファイル名で容易に発生）ため、100 バイト超は自前で
-    /// PAX path レコードを先行させ、ヘッダー側には文字境界で切り詰めた
-    /// フォールバック名を渡す。PAX 対応リーダー（oxiarc 自身・GNU tar・
-    /// bsdtar）は完全な名前を復元する。
-    fn add_tar_entry_safe<W: std::io::Write>(
-        tar: &mut TarWriter<W>,
-        mut header: TarHeader,
-        data: &[u8],
-        label: &str,
-    ) -> Result<(), String> {
-        if header.name.len() > TAR_NAME_MAX {
-            let pax_data = Self::pax_path_record(&header.name);
-            let mut pax_header = TarHeader::new_file("PaxHeader", pax_data.len() as u64, 0o644);
-            pax_header.typeflag = b'x';
-            pax_header.mtime = header.mtime;
-            tar.add_entry_from_header(&pax_header, &pax_data)
-                .map_err(|e| format!("{}PAXヘッダー追加エラー: {}", label, e))?;
-            header.name = Self::tar_fallback_name(&header.name);
-        }
-
-        tar.add_entry_from_header(&header, data)
-            .map_err(|e| format!("{}エントリ追加エラー: {}", label, e))
-    }
-
     /// TAR ライターへ全ソースを追加（TAR / TAR.GZ / TAR.BZ2 共通）
+    ///
+    /// 100 バイト超の名前は oxiarc の `add_entry_from_header` が
+    /// PAX 拡張ヘッダー（path レコード）で自動的に処理する。
     fn add_sources_to_tar<W: std::io::Write>(
         tar: &mut TarWriter<W>,
         source_paths: &[PathBuf],
@@ -918,7 +839,8 @@ impl ArchiveHandler {
                     if let Some(mtime) = Self::source_mtime_secs(path) {
                         header.mtime = mtime;
                     }
-                    Self::add_tar_entry_safe(tar, header, &[], label)
+                    tar.add_entry_from_header(&header, &[])
+                        .map_err(|e| format!("{}エントリ追加エラー: {}", label, e))
                 } else {
                     let data = std::fs::read(path)
                         .map_err(|e| format!("ファイルオープンエラー: {}", e))?;
@@ -930,7 +852,8 @@ impl ArchiveHandler {
                         header.mtime = mtime;
                     }
 
-                    Self::add_tar_entry_safe(tar, header, &data, label)
+                    tar.add_entry_from_header(&header, &data)
+                        .map_err(|e| format!("{}エントリ追加エラー: {}", label, e))
                 }
             })?;
         }
@@ -972,9 +895,6 @@ impl ArchiveHandler {
     }
 
     /// TAR.BZ2 ファイルを作成
-    ///
-    /// bzip2 の符号化は自前実装（`bzip2_compat`）を使用する。oxiarc-bzip2 0.3.3 の
-    /// 出力は libbz2 / bsdtar 等の標準ツールで解凍できない非互換形式のため。
     fn create_tar_bz2(source_paths: &[PathBuf], archive_path: &Path) -> Result<(), String> {
         let mut tar = TarWriter::new(Vec::new());
 
@@ -987,8 +907,8 @@ impl ArchiveHandler {
             .map_err(|e| format!("TAR.BZ2完了エラー: {}", e))?;
 
         // レベル6 = bzip2::Compression::default() 相当
-        let compressed =
-            bzip2_compat::compress(&tar_bytes, 6).map_err(|e| format!("BZ2圧縮エラー: {}", e))?;
+        let compressed = oxiarc_archive::bzip2::compress_with_level(&tar_bytes, 6)
+            .map_err(|e| format!("BZ2圧縮エラー: {}", e))?;
 
         std::fs::write(archive_path, compressed)
             .map_err(|e| format!("ファイル作成エラー: {}", e))?;
