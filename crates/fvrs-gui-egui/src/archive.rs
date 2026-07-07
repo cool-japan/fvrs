@@ -219,8 +219,7 @@ impl ArchiveHandler {
     /// 7Z ファイルの内容を一覧表示
     fn list_7z_contents(file_path: &Path) -> Result<Vec<ArchiveEntry>, String> {
         let file = File::open(file_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-        let sevenz =
-            SevenZReader::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
+        let sevenz = SevenZReader::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
 
         Ok(sevenz
             .sevenz_entries()
@@ -502,8 +501,7 @@ impl ArchiveHandler {
     fn extract_7z(archive_path: &Path, extract_to: &Path) -> Result<(), String> {
         let file =
             File::open(archive_path).map_err(|e| format!("ファイルオープンエラー: {}", e))?;
-        let mut sevenz =
-            SevenZReader::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
+        let mut sevenz = SevenZReader::new(file).map_err(|e| format!("7Z読み込みエラー: {}", e))?;
 
         for index in 0..sevenz.sevenz_entries().len() {
             let (name, is_dir, is_anti) = {
