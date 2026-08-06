@@ -81,10 +81,10 @@ tracing = "0.1"
 tracing-subscriber = "0.3"
 
 # Archives (COOLJAPAN Pure Rust: OxiARC)
-oxiarc-archive = "0.4.0"
-oxiarc-core = "0.4.0"
-oxiarc-deflate = "0.4.0"
-oxiarc-lzhuf = "0.4.0"
+oxiarc-archive = "0.4.1"
+oxiarc-core = "0.4.1"
+oxiarc-deflate = "0.4.1"
+oxiarc-lzhuf = "0.4.1"
 
 # RAR (C++ unrar binding; consumed only behind the non-default `rar` feature)
 unrar = "0.5.8"
